@@ -124,7 +124,7 @@ class Permutohedral:
 
         # Expected standard deviation of our filter (p.6 in [Adams et al. 2010])
         inv_std_dev = np.sqrt(2. / 3.) * (self.d_ + 1)
-        # Compute the diagonal part of E (p.5 in [Adams et al 2021])
+        # Compute the diagonal part of E (p.5 in [Adams et al 2010])
         scale_factor[:] = 1. / np.sqrt( (np.arange(self.d_) + 2) * (np.arange(self.d_) + 1) )  * inv_std_dev
 
         # Compute the simplex each feature lies in
@@ -306,42 +306,83 @@ class Permutohedral:
         Returns:
             out: (size, value_size)
         '''
-        # Shift all values by 1 such that -1 -> 0 (used for blurring)
-        # values = np.zeros( ((self.M_ + 2) * value_size, ), dtype=np.float32)
-        # new_values = np.zeros( ((self.M_ + 2) * value_size, ), dtype=np.float32)
-        # ->> Numpified
-        values = np.zeros( ((self.M_ + 2), value_size), dtype=np.float32 )
-        new_values = np.zeros( ((self.M_ + 2), value_size), dtype=np.float32 )
 
-        # Splatting
-        for i in range(self.N_):
-            for j in range(self.d_ + 1):
-                o = self.offset_[i, j] + 1
-                w = self.barycentric_[i, j]
-                values[o] += w * inp[i]
+        # for i in range(self.N_):
+        #     for j in range(self.d_ + 1):
+        #         o = self.offset_[i, j] + 1
+        #         w = self.barycentric_[i, j]
+        #         values[o] += w * inp[i]
+
         # # ->> Numpified
         # !!! np.bincount(os, minlength=values.shape[0], weights=inp)
+        
+        # ->> 2022-05-26: Remove the inner loop. AC!
         # values2 = np.zeros_like(values)
         # for i in range(self.N_):
         #     os = self.offset_[i] + 1 # (d + 1, )
         #     ws = self.barycentric_[i] # (d + 1, )
-        #     values2[os] += ws * inp[i]
+        #     values[os] += ws[..., np.newaxis] * inp[i][np.newaxis, ...]
+
+        # ->> 2022-05-26: Channel-wise `np.bincount`
+        # values2 = np.zeros_like(values) # (M + 2, value_size)
+
+            # for j in range(self.d_ + 1):
+            #     os = self.offset_[:, j] + 1 # (N, )
+            #     ws = self.barycentric_[:, j] # (N, )
+            #     values2[:, vs] += np.bincount(os, weights=inp[:, vs] * ws, minlength=self.M_ + 2)
         
+        # if not np.allclose(values, values2):
+        #     print('`values` error!')
+        # else:
+        #     print('`values` all close!')    
+        
+        # Slicing
+        # out *= 0
+        # for i in range(self.N_):
+        #     for j in range(self.d_ + 1):
+        #         o = self.offset_[i, j] + 1
+        #         w = self.barycentric_[i, j]
+        #         out[i] += w * values[o] * alpha
+        # ->> Numpified
+        # for j in range(self.d_ + 1):
+        #     os = self.offset_[:, j] + 1 # (N, )
+        #     ws = self.barycentric_[:, j] # (N, )
+        #     out[:] += ws * values[os] * alpha
+
+        # ->> 2022-05-26: Remove the inner loop, AC!
+        # out2 = np.zeros_like(out)
+        # for i in range(self.N_):
+        #     os = self.offset_[i] + 1 # (d + 1, )
+        #     ws = self.barycentric_[i] # (d + 1, )
+        #     out[i] += (ws[..., np.newaxis] * values[os] * alpha).sum(axis=0)
+        # if not np.allclose(out, out2):
+        #     print('`out` error!')
+        # else:
+        #     print('`out` all close!')
 
 
+
+        # **************************
+        # * 2022-05-26: Numpifying *
+        # **************************
+        # Shift all values by 1 such that -1 -> 0 (used for blurring)
+        # values = np.zeros( ((self.M_ + 2) * value_size, ), dtype=np.float32)
+        # new_values = np.zeros( ((self.M_ + 2) * value_size, ), dtype=np.float32)
+        values = np.zeros( ((self.M_ + 2), value_size), dtype=np.float32 )
+        new_values = np.zeros( ((self.M_ + 2), value_size), dtype=np.float32 )
+
+        # ->> Splat
+        os = self.offset_.reshape(-1) + 1 # (N x (d + 1), )
+        ws = self.barycentric_.reshape(-1) # (N x (d + 1), )
+
+        for vs in range(value_size):
+            inp_flat = np.broadcast_to(inp[:, vs][..., np.newaxis], (self.N_, self.d_ + 1))
+            inp_flat = inp_flat.reshape(-1)
+            values[:, vs] = np.bincount(os, weights=inp_flat * ws, minlength=self.M_ + 2)
+
+        # ->> Blur
         j_range = range(self.d_, -1, -1) if reverse else range(self.d_ + 1)
         for j in j_range:
-            # for i in range(self.M_):
-            #     old_val = values[i + 1]
-            #     new_val = new_values[i + 1]
-
-            #     n1 = self.blur_neighbors_[j, i, 0] + 1
-            #     n2 = self.blur_neighbors_[j, i, 1] + 1
-            #     n1_val = values[n1]
-            #     n2_val = values[n2]
-
-            #     new_val = old_val + .5 * (n1_val + n2_val)
-            # ->> Numpified
             old_vals = values[1:self.M_ + 1]
             new_vals = new_values[1:self.M_ + 1]
             n1s = self.blur_neighbors_[j, :self.M_, 0] + 1
@@ -353,21 +394,12 @@ class Permutohedral:
 
             values, new_values = new_values, values
 
+        # ->> Slice
         # Alpha is a magic scaling constant (write Andrew if you really wanna understand this)
         alpha = 1. / (1 + np.power(2., -self.d_))
-        
-        # Slicing
+
         out *= 0
-        for i in range(self.N_):
-            for j in range(self.d_ + 1):
-                o = self.offset_[i, j] + 1
-                w = self.barycentric_[i, j]
-                out[i] += w * values[o] * alpha
-        # ->> Numpified
-        # for j in range(self.d_ + 1):
-        #     os = self.offset_[:, j] + 1 # (N, )
-        #     ws = self.barycentric_[:, j] # (N, )
-        #     out[:] += ws * values[os] * alpha
+        out[:] = (ws[..., np.newaxis] * values[os] * alpha).reshape((self.N_, self.d_ + 1, value_size)).sum(axis=1) # (N, vs)
 
         del values, new_values
 
