@@ -102,13 +102,20 @@ class Permutohedral:
         # Allocate the class memory
         # pass
 
-        # Allocate the local memory
+        # # Allocate the local memory
+        # scale_factor = np.zeros((self.d_, ), dtype=np.float32)
+        # elevated = np.zeros((self.d_ + 1, ), dtype=np.float32)
+        # rem0 = np.zeros((self.d_ + 1, ), dtype=np.float32)
+        # barycentric = np.zeros((self.d_ + 2, ), dtype=np.float32)
+        # rank = np.zeros((self.d_ + 1, ), dtype=np.short)
+        # canonical = np.zeros( (self.d_ + 1, self.d_ + 1), dtype=np.short)
+        # key = np.zeros((self.d_ + 1, ), dtype=np.short)
+
+        # ->> 2022.05.27 Allocate the local memory, numpifying
         scale_factor = np.zeros((self.d_, ), dtype=np.float32)
-        elevated = np.zeros((self.d_ + 1, ), dtype=np.float32)
-        rem0 = np.zeros((self.d_ + 1, ), dtype=np.float32)
         barycentric = np.zeros((self.d_ + 2, ), dtype=np.float32)
-        rank = np.zeros((self.d_ + 1, ), dtype=np.short)
-        canonical = np.zeros( (self.d_ + 1, self.d_ + 1), dtype=np.short)
+        rank = np.zeros((self.d_ + 1, self.N_), dtype=np.short)
+        canonical = np.zeros((self.d_ + 1, self.d_ + 1), dtype=np.short)
         key = np.zeros((self.d_ + 1, ), dtype=np.short)
 
         # Compute the canonical simplex
@@ -117,7 +124,7 @@ class Permutohedral:
         #         canonical[i * (self.d_ + 1) + j] = i
         #     for j in range(self.d_ - i + 1, self.d_ + 1):
         #         canonical[i * (self.d_ + 1) + j] = i - (self.d_ + 1)
-        # ->> Numpified
+        # ->> Numpified, (d + 1, d + 1)
         for i in range(self.d_ + 1):
             canonical[i, :self.d_ + 1 - i] = i
             canonical[i, self.d_ + 1 - i:] = i - (self.d_ + 1)
@@ -125,7 +132,7 @@ class Permutohedral:
         # Expected standard deviation of our filter (p.6 in [Adams et al. 2010])
         inv_std_dev = np.sqrt(2. / 3.) * (self.d_ + 1)
         # Compute the diagonal part of E (p.5 in [Adams et al 2010])
-        scale_factor[:] = 1. / np.sqrt( (np.arange(self.d_) + 2) * (np.arange(self.d_) + 1) )  * inv_std_dev
+        scale_factor[:] = 1. / np.sqrt( (np.arange(self.d_) + 2) * (np.arange(self.d_) + 1) )  * inv_std_dev # (d, )
 
         # Compute the simplex each feature lies in
         for k in range(self.N_):
@@ -177,21 +184,20 @@ class Permutohedral:
             #             rank[i] += 1
             #         else:
             #             rank[j] += 1
-            
-            # for i in range(self.d_):
-            #     di = ds[i] 
-            #     dj = ds[i + 1:] 
-            #     rank[i] += (di < dj).sum()
-            #     rank[i + 1:] += (di >= dj)
-
-            # ->> Numpification test
+            # ->> Numpified
+            # rank2 = np.zeros_like(rank, dtype=rank.dtype)
             rank.fill(0)
             ds = elevated - rem0
-            valid = 1 - np.tril(np.ones((self.d_ + 1, self.d_ + 1), dtype=np.short))
-            di = ds[:, np.newaxis] 
-            dj = ds[np.newaxis, :]
-            rank += ((di < dj) * valid).sum(axis=1)
-            rank += ((di >= dj) * valid).sum(axis=0)
+            for i in range(self.d_):
+                di = ds[i] 
+                dj = ds[i + 1:] 
+                rank[i] += (di < dj).sum()
+                rank[i + 1:] += (di >= dj)
+
+            # if not np.allclose(rank, rank2):
+            #     print('rank error at', k)
+            #     print(rank, rank2)
+
 
             # If the point doesn't lie on the plane (sum != 0) bring it back
             # rank2 = rank.copy()
@@ -253,7 +259,12 @@ class Permutohedral:
                 self.rank_[k, remainder] = rank[remainder]
                 self.barycentric_[k, remainder] = barycentric[remainder]
 
-        del scale_factor, elevated, rem0, barycentric, rank, canonical, key, _sum
+        # ->> 2022.05.27 Numpify
+        # Shape of feature (N, d)
+
+        # Compute the simplex each feature lies in
+
+        del scale_factor, elevated, rem0, barycentric, rank, canonical, key
 
         # Find the neighbors of each lattice point
 
@@ -279,122 +290,6 @@ class Permutohedral:
 
         #         self.blur_neighbors_[j, i, 0] = self.hash_table.find(n1)
         #         self.blur_neighbors_[j, i, 1] = self.hash_table.find(n2)
-        # ->> Loop exchanged
-        for i in range(self.M_):
-            key = self.hash_table.get_key(i)
-            n1[:self.d_] = key[:self.d_] - 1
-            n2[:self.d_] = key[:self.d_] + 1
-            n1_ori, n2_ori = n1.copy(), n2.copy()
-            for j in range(self.d_ + 1):
-                n1[j] = key[j] + self.d_
-                n2[j] = key[j] - self.d_
-                self.blur_neighbors_[j, i, 0] = self.hash_table.find(n1)
-                self.blur_neighbors_[j, i, 1] = self.hash_table.find(n2)
-                n1[:] = n1_ori
-                n2[:] = n2_ori
-                
-        del n1, n2
-
-    def numpified_init(self, feature):
-        # ->> Numpification test
-        # ->> Note that the shape of `feature` is (N, d), channel-last
-
-        # Compute the lattice coordinates for each feature [there is going to be a lot of magic here
-        # pass
-
-        # Allocate the class memory
-        # pass
-
-        # ->> 2022.05.27 Allocate the local memory
-        scale_factor = np.zeros((self.d_, ), dtype=np.float32)
-        elevated = np.zeros((self.N_, self.d_ + 1), dtype=np.float32)
-        rem0 = np.zeros((self.N_, self.d_ + 1), dtype=np.float32)
-        barycentric = np.zeros((self.N_, self.d_ + 2), dtype=np.float32)
-        rank = np.zeros((self.N_, self.d_ + 1), dtype=np.short)
-        canonical = np.zeros((self.d_ + 1, self.d_ + 1), dtype=np.short)
-        key = np.zeros((self.N_, self.d_ + 1), dtype=np.short)
-        _sum = np.zeros((self.N_, ), dtype=np.int32)
-
-        # Compute the canonical simplex, (d + 1, d + 1)
-        for i in range(self.d_ + 1):
-            canonical[i, :self.d_ + 1 - i] = i
-            canonical[i, self.d_ + 1 - i:] = i - (self.d_ + 1)
-
-        # Expected standard deviation of our filter (p.6 in [Adams et al. 2010])
-        inv_std_dev = np.sqrt(2. / 3.) * (self.d_ + 1)
-        # Compute the diagonal part of E (p.5 in [Adams et al 2010])
-        scale_factor[:] = 1. / np.sqrt( (np.arange(self.d_) + 2) * (np.arange(self.d_) + 1) )  * inv_std_dev # (d, )
-        
-        # Compute the simplex each feature lies in
-        # !!! Shape of feature (N, d)
-        # Elevate the feature (y = Ep, see p.5 in [Adams et al. 2010])
-        cf = feature * scale_factor[np.newaxis, ...] # (N, d)
-        E = np.vstack([
-            np.ones((self.d_, ), dtype=np.float32), 
-            np.diag(-np.arange(self.d_, dtype=np.float32) - 2) + np.triu(np.ones((self.d_, self.d_), dtype=np.float32))]) # (d + 1, d)
-        elevated[:] = np.matmul(cf, E.T) # (N, d + 1)
-
-        # Find the closest 0-colored simplex through rounding
-        # ->> Numpify
-        down_factor = 1. / (self.d_ + 1)
-        up_factor = self.d_ + 1
-        v = down_factor * elevated # (N, d + 1)
-        up = np.ceil(v) * up_factor # (N, d + 1)
-        down = np.floor(v) * up_factor # (N, d + 1)
-        rem0[:] = np.where(up - elevated < elevated - down, up, down).astype(np.float32) # (N, d + 1)
-        _sum[:] = (rem0.sum(axis=1) * down_factor).astype(np.int32) # (N, )
-        
-        # Find the simplex we are in and store it in rank (where rank describes what position coordinate i has in the sorted order of the feature values)
-        rank.fill(0) # (N, d + 1)
-        ds = elevated - rem0 # (N, d + 1)
-        valid = 1 - np.tril(np.ones((self.d_ + 1, self.d_ + 1), dtype=np.short))
-        di = ds[..., np.newaxis] # (N, d + 1, 1)
-        dj = ds[..., np.newaxis, :] # (N, 1, d + 1)
-        rank += ((di < dj) * valid[np.newaxis, ...]).sum(axis=2) # (N, d + 1)
-        rank += ((di >= dj) * valid[np.newaxis, ...]).sum(axis=1) # (N, d + 1)
-        
-        # If the point doesn't lie on the plane (sum != 0) bring it back
-        rank += _sum[..., np.newaxis] # (N, d + 1)
-        ls_zero = rank < 0
-        gt_d = rank > self.d_
-        rank[ls_zero] += self.d_ + 1
-        rem0[ls_zero] += self.d_ + 1
-        rank[gt_d] -= self.d_ + 1
-        rem0[gt_d] -= self.d_ + 1
-
-        # Compute the barycentric coordinates (p.10 in [Adams et al. 2010])
-        barycentric.fill(0) # (N, d + 2)
-        vs = (elevated - rem0) * down_factor # (N, d + 1)
-        barycentric = barycentric.reshape(-1) # (N x (d + 1), )
-        idx = (self.d_ - rank) + np.arange(self.N_)[..., np.newaxis] * (self.d_ + 2)
-        idx1 = (self.d_ - rank + 1) + np.arange(self.N_)[..., np.newaxis] * (self.d_ + 2)
-        barycentric[idx] += vs
-        barycentric[idx1] -= vs
-        barycentric = barycentric.reshape((self.N_, self.d_ + 2))
-        barycentric[..., 0] += 1. + barycentric[..., self.d_ + 1]
-
-        # Compute all vertices and their offset
-        for k in range(self.N_):
-            for remainder in range(self.d_ + 1):
-                key[k, :self.d_] = rem0[k, :self.d_] + canonical[remainder, rank[k, :self.d_]]
-                self.offset_[k, remainder] = self.hash_table.find(key[k], True)
-        self.rank_[:] = rank
-        self.barycentric_[:] = barycentric[..., :self.d_ + 1]
-
-        del scale_factor, elevated, rem0, barycentric, rank, canonical, key, _sum
-
-        # Find the neighbors of each lattice point
-
-        # Get the number of vertices in the lattice
-        self.M_ = self.hash_table.size()
-
-        # Create the neighborhood structure
-        self.blur_neighbors_ = np.zeros( (self.d_ + 1, self.M_, 2), dtype=np.int32)
-
-        n1 = np.zeros((self.d_ + 1, ), dtype=np.short)
-        n2 = np.zeros((self.d_ + 1, ), dtype=np.short)
-
-        # For each of d+1 axes,
         # ->> Loop exchanged
         for i in range(self.M_):
             key = self.hash_table.get_key(i)

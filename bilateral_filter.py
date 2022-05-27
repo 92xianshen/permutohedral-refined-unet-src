@@ -23,7 +23,25 @@ features = features.reshape((-1, 5))
 N, d = features.shape[0], features.shape[1]
 lattice = Permutohedral(N, d)
 lattice.init(features)
+lattice2 = Permutohedral(N, d)
+lattice2.numpified_init(features)
 print('Lattice initialized.')
+
+if np.allclose(lattice.offset_, lattice2.offset_):
+    print('`offset` all close')
+else:
+    print('`offset` error')
+if np.allclose(lattice.rank_, lattice2.rank_):
+    print('`rank` all close')
+else:
+    print('`rank` error')
+if np.allclose(lattice.barycentric_, lattice2.barycentric_):
+    print('`barycentric` all close')
+else:
+    print('`barycentric` error')
+if np.allclose(lattice.blur_neighbors_, lattice2.blur_neighbors_):
+    print('`blur_neighbors` all close')
+
 
 all_ones = np.ones((N, 1), dtype=np.float32)
 all_ones = lattice.compute(all_ones)
@@ -35,8 +53,19 @@ dst = dst.reshape((h, w, n_channels))
 dst = dst / all_ones
 dst = (dst - dst.min()) / (dst.max() - dst.min() + 1e-5)
 
+all_ones2 = np.ones((N, 1), dtype=np.float32)
+all_ones2 = lattice2.compute(all_ones2)
+all_ones2 = all_ones2.reshape((h, w, 1))
+
+src2 = im.reshape((-1, n_channels))
+dst2 = lattice2.compute(src2)
+dst2 = dst2.reshape((h, w, n_channels))
+dst2 = dst2 / all_ones2
+dst2 = (dst2 - dst2.min()) / (dst2.max() - dst2.min() + 1e-5)
+
 cv2.imshow('im', im[..., ::-1])
 cv2.imshow('im_filtered', dst[..., ::-1])
+cv2.imshow('im_filtered2', dst2[..., ::-1])
 cv2.waitKey()
 
 # im_filtered = np.zeros_like(im)
