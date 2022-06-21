@@ -3,16 +3,20 @@ This is a python implementation of permutohedral lattice in Dense CRF
 ->> 2021.10.08 Removing loops
 ->> 2022.05.27 Numpify `init()`, create `np_init()`
 ->> 2022.05.31 Remove comments
+->> 2022.05.31 Try to remove hash table
 '''
 
 import numpy as np
 
+
 class HashTable:
+
     def __init__(self, key_size, n_elements):
         self.key_size_ = key_size
         self.filled_ = 0
         self.capacity_ = 2 * n_elements
-        self.keys_ = np.zeros( ((self.capacity_ // 2 + 10) * self.key_size_, ), dtype=np.short)
+        self.keys_ = np.zeros(((self.capacity_ // 2 + 10) * self.key_size_, ),
+                              dtype=np.short)
         self.table_ = np.ones((2 * n_elements, ), dtype=np.int32) * -1
 
     def grow(self):
@@ -20,7 +24,8 @@ class HashTable:
         print('Hashtable grows...')
         old_capacity = self.capacity_
         self.capacity_ *= 2
-        old_keys = np.zeros(((old_capacity + 10) * self.key_size_, ), dtype=np.short)
+        old_keys = np.zeros(((old_capacity + 10) * self.key_size_, ),
+                            dtype=np.short)
         old_keys[:(old_capacity // 2 + 10) * self.key_size_] = self.keys_
         old_table = np.ones((self.capacity_, ), dtype=np.int32) * -1
 
@@ -66,14 +71,17 @@ class HashTable:
             if e == -1:
                 if create:
                     # Insert a new key and return the new id
-                    self.keys_[self.filled_ * self.key_size_:self.filled_ * self.key_size_ + self.key_size_] = k[:self.key_size_]
+                    self.keys_[self.filled_ *
+                               self.key_size_:self.filled_ * self.key_size_ +
+                               self.key_size_] = k[:self.key_size_]
                     self.table_[h] = self.filled_
                     self.filled_ += 1
                     return self.table_[h]
                 else:
                     return -1
             # Check if the current key is The One
-            good = np.all(self.keys_[e * self.key_size_:e * self.key_size_ + self.key_size_] == k[:self.key_size_])
+            good = np.all(self.keys_[e * self.key_size_:e * self.key_size_ +
+                                     self.key_size_] == k[:self.key_size_])
             if good:
                 return e
             # Continue searching
@@ -84,15 +92,17 @@ class HashTable:
     def get_key(self, i):
         return self.keys_[i * self.key_size_:]
 
+
 class Permutohedral:
+
     def __init__(self, N, d):
         self.N_, self.M_, self.d_ = N, 0, d
         self.blur_neighbors_ = None
         self.hash_table = HashTable(d, N * (d + 1))
         # ->> Numpified
-        self.offset_ = np.zeros( (N, (d + 1)), dtype=np.int32 )
-        self.rank_ = np.zeros( (N, (d + 1)), dtype=np.int32 )
-        self.barycentric_ = np.zeros( (N, (d + 1)), dtype=np.float32 )
+        self.offset_ = np.zeros((N, (d + 1)), dtype=np.int32)
+        self.rank_ = np.zeros((N, (d + 1)), dtype=np.int32)
+        self.barycentric_ = np.zeros((N, (d + 1)), dtype=np.float32)
 
     def init(self, feature):
         # ->> Numpification test
@@ -111,7 +121,7 @@ class Permutohedral:
         barycentric = np.zeros((self.N_, self.d_ + 2), dtype=np.float32)
         rank = np.zeros((self.N_, self.d_ + 1), dtype=np.short)
         canonical = np.zeros((self.d_ + 1, self.d_ + 1), dtype=np.short)
-        key = np.zeros((self.N_, self.d_ + 1), dtype=np.short)
+        key = np.zeros((self.N_, self.d_ + 1, self.d_ + 1), dtype=np.short)
         _sum = np.zeros((self.N_, ), dtype=np.int32)
 
         # Compute the canonical simplex, (d + 1, d + 1)
@@ -122,38 +132,44 @@ class Permutohedral:
         # Expected standard deviation of our filter (p.6 in [Adams et al. 2010])
         inv_std_dev = np.sqrt(2. / 3.) * (self.d_ + 1)
         # Compute the diagonal part of E (p.5 in [Adams et al 2010])
-        scale_factor[:] = 1. / np.sqrt( (np.arange(self.d_) + 2) * (np.arange(self.d_) + 1) )  * inv_std_dev # (d, )
-        
+        scale_factor[:] = 1. / np.sqrt(
+            (np.arange(self.d_) + 2) *
+            (np.arange(self.d_) + 1)) * inv_std_dev  # (d, )
+
         # Compute the simplex each feature lies in
         # !!! Shape of feature (N, d)
         # Elevate the feature (y = Ep, see p.5 in [Adams et al. 2010])
-        cf = feature * scale_factor[np.newaxis, ...] # (N, d)
+        cf = feature * scale_factor[np.newaxis, ...]  # (N, d)
         E = np.vstack([
-            np.ones((self.d_, ), dtype=np.float32), 
-            np.diag(-np.arange(self.d_, dtype=np.float32) - 2) + np.triu(np.ones((self.d_, self.d_), dtype=np.float32))]) # (d + 1, d)
-        elevated[:] = np.matmul(cf, E.T) # (N, d + 1)
+            np.ones((self.d_, ), dtype=np.float32),
+            np.diag(-np.arange(self.d_, dtype=np.float32) - 2) +
+            np.triu(np.ones((self.d_, self.d_), dtype=np.float32))
+        ])  # (d + 1, d)
+        elevated[:] = np.matmul(cf, E.T)  # (N, d + 1)
 
         # Find the closest 0-colored simplex through rounding
         # ->> Numpify
         down_factor = 1. / (self.d_ + 1)
         up_factor = self.d_ + 1
-        v = down_factor * elevated # (N, d + 1)
-        up = np.ceil(v) * up_factor # (N, d + 1)
-        down = np.floor(v) * up_factor # (N, d + 1)
-        rem0[:] = np.where(up - elevated < elevated - down, up, down).astype(np.float32) # (N, d + 1)
-        _sum[:] = (rem0.sum(axis=1) * down_factor).astype(np.int32) # (N, )
-        
+        v = down_factor * elevated  # (N, d + 1)
+        up = np.ceil(v) * up_factor  # (N, d + 1)
+        down = np.floor(v) * up_factor  # (N, d + 1)
+        rem0[:] = np.where(up - elevated < elevated - down, up,
+                           down).astype(np.float32)  # (N, d + 1)
+        _sum[:] = (rem0.sum(axis=1) * down_factor).astype(np.int32)  # (N, )
+
         # Find the simplex we are in and store it in rank (where rank describes what position coordinate i has in the sorted order of the feature values)
-        rank.fill(0) # (N, d + 1)
-        ds = elevated - rem0 # (N, d + 1)
-        valid = 1 - np.tril(np.ones((self.d_ + 1, self.d_ + 1), dtype=np.short))
-        di = ds[..., np.newaxis] # (N, d + 1, 1)
-        dj = ds[..., np.newaxis, :] # (N, 1, d + 1)
-        rank += ((di < dj) * valid[np.newaxis, ...]).sum(axis=2) # (N, d + 1)
-        rank += ((di >= dj) * valid[np.newaxis, ...]).sum(axis=1) # (N, d + 1)
-        
+        rank.fill(0)  # (N, d + 1)
+        ds = elevated - rem0  # (N, d + 1)
+        valid = 1 - np.tril(np.ones(
+            (self.d_ + 1, self.d_ + 1), dtype=np.short))
+        di = ds[..., np.newaxis]  # (N, d + 1, 1)
+        dj = ds[..., np.newaxis, :]  # (N, 1, d + 1)
+        rank += ((di < dj) * valid[np.newaxis, ...]).sum(axis=2)  # (N, d + 1)
+        rank += ((di >= dj) * valid[np.newaxis, ...]).sum(axis=1)  # (N, d + 1)
+
         # If the point doesn't lie on the plane (sum != 0) bring it back
-        rank += _sum[..., np.newaxis] # (N, d + 1)
+        rank += _sum[..., np.newaxis]  # (N, d + 1)
         ls_zero = rank < 0
         gt_d = rank > self.d_
         rank[ls_zero] += self.d_ + 1
@@ -162,23 +178,33 @@ class Permutohedral:
         rem0[gt_d] -= self.d_ + 1
 
         # Compute the barycentric coordinates (p.10 in [Adams et al. 2010])
-        barycentric.fill(0) # (N, d + 2)
-        vs = (elevated - rem0) * down_factor # (N, d + 1)
-        barycentric = barycentric.reshape(-1) # (N x (d + 2), )
-        idx = (self.d_ - rank) + np.arange(self.N_)[..., np.newaxis] * (self.d_ + 2)
-        idx1 = (self.d_ - rank + 1) + np.arange(self.N_)[..., np.newaxis] * (self.d_ + 2)
+        barycentric.fill(0)  # (N, d + 2)
+        vs = (elevated - rem0) * down_factor  # (N, d + 1)
+        barycentric = barycentric.reshape(-1)  # (N x (d + 2), )
+        idx = (self.d_ -
+               rank) + np.arange(self.N_)[..., np.newaxis] * (self.d_ + 2)
+        idx1 = (self.d_ - rank +
+                1) + np.arange(self.N_)[..., np.newaxis] * (self.d_ + 2)
         barycentric[idx] += vs
         barycentric[idx1] -= vs
         barycentric = barycentric.reshape((self.N_, self.d_ + 2))
         barycentric[..., 0] += 1. + barycentric[..., self.d_ + 1]
 
         # Compute all vertices and their offset
+        # ->> Numpification test
+        canonicalT = np.transpose(canonical, (1, 0))  # (d + 1,  d + 1)
+        canonical_ext = canonicalT[rank]  # (N, d + 1, d + 1)
+        canonical_ext = np.transpose(canonical_ext,
+                                     (0, 2, 1))  # (N, d + 1, d + 1)
+        key[..., :self.d_] = rem0[..., np.newaxis, :self.d_] + canonical_ext[
+            ..., :self.d_]
+
         for k in range(self.N_):
             for remainder in range(self.d_ + 1):
-                key[k, :self.d_] = rem0[k, :self.d_] + canonical[remainder, rank[k, :self.d_]]
-                self.offset_[k, remainder] = self.hash_table.find(key[k], True)
-        self.rank_[:] = rank # (N, d + 1)
-        self.barycentric_[:] = barycentric[..., :self.d_ + 1] # (N, d + 1)
+                self.offset_[k, remainder] = self.hash_table.find(
+                    key[k, remainder], True)
+        self.rank_[:] = rank  # (N, d + 1)
+        self.barycentric_[:] = barycentric[..., :self.d_ + 1]  # (N, d + 1)
 
         del scale_factor, elevated, rem0, barycentric, rank, canonical, key, _sum
 
@@ -188,27 +214,38 @@ class Permutohedral:
         self.M_ = self.hash_table.size()
 
         # Create the neighborhood structure
-        self.blur_neighbors_ = np.zeros( (self.d_ + 1, self.M_, 2), dtype=np.int32)
-
-        n1 = np.zeros((self.d_ + 1, ), dtype=np.short)
-        n2 = np.zeros((self.d_ + 1, ), dtype=np.short)
+        self.blur_neighbors_ = np.zeros((self.d_ + 1, self.M_, 2),
+                                        dtype=np.int32)
 
         # For each of d+1 axes,
+        # ->> Numpification test
+        n1s = np.zeros((self.M_, self.d_ + 1, self.d_ + 1),
+                       dtype=np.short)  # (M, d + 1, d + 1)
+        n2s = np.zeros((self.M_, self.d_ + 1, self.d_ + 1),
+                       dtype=np.short)  # (M, d + 1, d + 1)
+        hash_keys = self.hash_table.keys_[:self.hash_table.key_size_ *
+                                          self.hash_table.filled_]
+        hash_keys = hash_keys.reshape(
+            (self.hash_table.filled_, self.hash_table.key_size_))  # (M, d)
+        overflow_keys = np.concatenate([hash_keys[1:, 0], [0]])  # (M, )
+        n1s[..., :self.d_] = hash_keys[:, np.newaxis, :] - 1
+        n2s[..., :self.d_] = hash_keys[:, np.newaxis, :] + 1
+        ds = np.zeros((self.d_ + 1, ), dtype=np.short)
+        ds.fill(self.d_)  # (d + 1, )
+        ds = np.diag(ds)  # (d + 1, d + 1)
+        diagone = np.diag(np.ones(self.d_ + 1, dtype=np.short))
+        n1s += ds[np.newaxis, ...] + diagone
+        n2s -= ds[np.newaxis, ...] + diagone
+        n1s[:, self.d_, self.d_] = overflow_keys + self.d_
+        n2s[:, self.d_, self.d_] = overflow_keys - self.d_
+
         # ->> Loop exchanged
         for i in range(self.M_):
-            key = self.hash_table.get_key(i)
-            n1[:self.d_] = key[:self.d_] - 1
-            n2[:self.d_] = key[:self.d_] + 1
-            n1_ori, n2_ori = n1.copy(), n2.copy()
             for j in range(self.d_ + 1):
-                n1[j] = key[j] + self.d_
-                n2[j] = key[j] - self.d_
-                self.blur_neighbors_[j, i, 0] = self.hash_table.find(n1)
-                self.blur_neighbors_[j, i, 1] = self.hash_table.find(n2)
-                n1[:] = n1_ori
-                n2[:] = n2_ori
-                
-        del n1, n2
+                self.blur_neighbors_[j, i, 0] = self.hash_table.find(n1s[i, j])
+                self.blur_neighbors_[j, i, 1] = self.hash_table.find(n2s[i, j])
+
+        del n1s, n2s, ds, diagone
 
     def seq_compute(self, out, inp, value_size, reverse):
         '''
@@ -227,17 +264,20 @@ class Permutohedral:
         # * 2022-05-26: Numpifying *
         # **************************
         # Shift all values by 1 such that -1 -> 0 (used for blurring)
-        values = np.zeros( ((self.M_ + 2), value_size), dtype=np.float32 )
-        new_values = np.zeros( ((self.M_ + 2), value_size), dtype=np.float32 )
+        values = np.zeros(((self.M_ + 2), value_size), dtype=np.float32)
+        new_values = np.zeros(((self.M_ + 2), value_size), dtype=np.float32)
 
         # ->> Splat
-        os = self.offset_.reshape(-1) + 1 # (N x (d + 1), )
-        ws = self.barycentric_.reshape(-1) # (N x (d + 1), )
+        os = self.offset_.reshape(-1) + 1  # (N x (d + 1), )
+        ws = self.barycentric_.reshape(-1)  # (N x (d + 1), )
 
         for vs in range(value_size):
-            inp_flat = np.broadcast_to(inp[:, vs][..., np.newaxis], (self.N_, self.d_ + 1))
+            inp_flat = np.broadcast_to(inp[:, vs][..., np.newaxis],
+                                       (self.N_, self.d_ + 1))
             inp_flat = inp_flat.reshape(-1)
-            values[:, vs] = np.bincount(os, weights=inp_flat * ws, minlength=self.M_ + 2)
+            values[:, vs] = np.bincount(os,
+                                        weights=inp_flat * ws,
+                                        minlength=self.M_ + 2)
 
         # ->> Blur
         j_range = range(self.d_, -1, -1) if reverse else range(self.d_ + 1)
@@ -258,7 +298,8 @@ class Permutohedral:
         alpha = 1. / (1 + np.power(2., -self.d_))
 
         out *= 0
-        out[:] = (ws[..., np.newaxis] * values[os] * alpha).reshape((self.N_, self.d_ + 1, value_size)).sum(axis=1) # (N, vs)
+        out[:] = (ws[..., np.newaxis] * values[os] * alpha).reshape(
+            (self.N_, self.d_ + 1, value_size)).sum(axis=1)  # (N, vs)
 
         del values, new_values
 
