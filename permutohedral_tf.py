@@ -5,6 +5,9 @@ This is a tf implementation of permutohedral lattice.
 import numpy as np
 import tensorflow as tf
 
+enable_float64 = 0
+tf_float = tf.float64 if enable_float64 else tf.float32
+
 
 class HashTable:
     """
@@ -12,16 +15,16 @@ class HashTable:
     Keep loop structures until get a replacement.
     """
 
-    def __init__(self, key_size: np.uint64, n_elements: np.uint64) -> None:
-        self.key_size_ = tf.constant(key_size, dtype=tf.uint64)
-        self.filled_ = tf.constant(0, dtype=tf.uint64)
-        self.capacity_ = tf.constant(2 * n_elements, dtype=tf.uint64)
+    def __init__(self, key_size, n_elements) -> None:
+        self.key_size_ = tf.constant(tf.cast(key_size, dtype=tf.int32))
+        self.filled_ = tf.constant(0, dtype=tf.int32)
+        self.capacity_ = tf.constant(tf.cast(2 * n_elements, dtype=tf.int32))
         self.keys_ = tf.Variable(
             tf.zeros(
                 [
                     (self.capacity_ // 2 + 10) * self.key_size_,
                 ],
-                dtype=tf.int16,
+                dtype=tf.int32,
             ),
             trainable=False,
         )
@@ -45,7 +48,7 @@ class HashTable:
                 [
                     (old_capacity + 10) * self.key_size_,
                 ],
-                dtype=tf.int16,
+                dtype=tf.int32,
             ),
             trainable=False,
         )
@@ -81,7 +84,7 @@ class HashTable:
     def hash(self, k):
         r = tf.Variable(0, dtype=tf.uint64, trainable=False)
         for i in range(self.key_size_):
-            r.assign_add(k[i])
+            r.assign_add(tf.cast(k[i], dtype=tf.uint64))
             r.assign(r * 1664525)
         return tf.constant(r, dtype=tf.uint64)
 
@@ -92,11 +95,13 @@ class HashTable:
         self.filled_ = tf.constant(0, dtype=tf.uint64)
         self.table_.assign(tf.ones_like(self.table_) * -1)
 
+    # @tf.function
     def find(self, k, create=False):
         if self.capacity_ <= 2 * self.filled_:
             self.grow()
         # Get the hash value
-        h = self.hash(k) % self.capacity_
+        h = tf.cast(self.hash(k) % tf.cast(self.capacity_, dtype=tf.uint64),
+                    dtype=tf.int32)
         # Find the element with the right key, using linear probing
         while True:
             e = self.table_[h]
@@ -135,39 +140,36 @@ class Permutohedral:
             tf.constant(d, dtype=tf.int32),
         )
 
-        canonical = np.zeros((d + 1, d + 1), dtype=np.short)
+        canonical = np.zeros((d + 1, d + 1), dtype=np.int32)
         for i in range(d + 1):
             canonical[i, :d + 1 - i] = i
             canonical[i, d + 1 - i:] = i - (d + 1)
-        self.canonical = tf.constant(canonical, dtype=tf.int16)
+        self.canonical = tf.constant(canonical, dtype=tf.int32)
 
         E = np.vstack([
             np.ones((d, ), dtype=np.float32),
             np.diag(-np.arange(d, dtype=np.float32) - 2) +
             np.triu(np.ones((d, d), dtype=np.float32)),
         ])  # (d + 1, d)
-        self.E = tf.constant(E, dtype=tf.float32)
+        self.E = tf.constant(E, dtype=tf_float)
 
         # Expected standard deviation of our filter (p.6 in [Adams et al. 2010])
         inv_std_dev = np.sqrt(2.0 / 3.0) * (d + 1)
-        self.inv_std_dev = tf.constant(inv_std_dev, dtype=tf.float32)
+        self.inv_std_dev = tf.constant(inv_std_dev, dtype=tf_float)
 
         # Compute the diagonal part of E (p.5 in [Adams et al 2010])
         scale_factor = (1.0 / np.sqrt(
             (np.arange(d) + 2) * (np.arange(d) + 1)) * inv_std_dev)  # (d, )
-        self.scale_factor = tf.constant(scale_factor, dtype=tf.float32)
+        self.scale_factor = tf.constant(scale_factor, dtype=tf_float)
 
-        valid = 1 - np.tril(np.ones((d + 1, d + 1), dtype=np.short))
-        self.valid = tf.constant(valid, dtype=tf.int16)
+        valid = 1 - np.tril(np.ones((d + 1, d + 1), dtype=np.int32))
+        self.valid = tf.constant(valid, dtype=tf.int32)
 
         ds = np.ones((d + 1, ), dtype=np.short) * d
         ds = np.diag(ds)  # (d + 1, d + 1)
-        diagone = np.diag(
-            np.ones(d + 1, ),
-            dtype=np.short,
-        ) # (d + 1, d + 1)
-        self.ds = tf.constant(ds, dtype=tf.int16)
-        self.diagone = tf.constant(diagone, dtype=tf.int16)
+        diagone = np.diag(np.ones(d + 1, dtype=np.short))  # (d + 1, d + 1)
+        self.ds = tf.constant(ds, dtype=tf.int32)
+        self.diagone = tf.constant(diagone, dtype=tf.int32)
 
         self.blur_neighbors_, self.offset_, self.rank_, self.barycentric_ = (
             None,
@@ -185,35 +187,47 @@ class Permutohedral:
         elevated = tf.matmul(cf, tf.transpose(self.E))  # [N, d + 1]
 
         # Find the closest 0-colored simplex through rounding
-        down_factor = tf.constant(1.0 / (self.d_ + 1), dtype=tf.float32)
-        up_factor = tf.constant(self.d_ + 1, dtype=tf.float32)
+        down_factor = tf.constant(1.0 / tf.cast(self.d_ + 1, dtype=tf_float),
+                                  dtype=tf_float)
+        up_factor = tf.constant(tf.cast(self.d_ + 1, dtype=tf_float),
+                                dtype=tf_float)
         v = down_factor * elevated  # [N, d + 1]
         up = tf.math.ceil(v) * up_factor  # [N, d + 1]
         down = tf.math.floor(v) * up_factor  # [N, d + 1]
         rem0 = tf.cast(tf.where(up - elevated < elevated - down, up, down),
-                       dtype=tf.float32)  # [N, d + 1]
+                       dtype=tf_float)  # [N, d + 1]
         _sum = tf.cast(tf.reduce_sum(rem0, axis=1) * down_factor,
                        dtype=tf.int32)  # [N, ]
 
         # Find the simplex we are in and store it in rank (where rank describes what position coordinate i has in the sorted order of the feature values)
         rank = tf.zeros(shape=[self.N_, self.d_ + 1],
-                        dtype=tf.int16)  # [N, d + 1]
+                        dtype=tf.int32)  # [N, d + 1]
         ds = elevated - rem0  # [N, d + 1]
         di = ds[..., tf.newaxis]  # [N, d + 1, 1]
         dj = ds[..., tf.newaxis, :]  # [N, 1, d + 1]
-        rank += tf.reduce_sum((di < dj) * self.valid[tf.newaxis, ...],
-                              axis=2)  # [N, d + 1]
-        rank += tf.reduce_sum((di >= dj) * self.valid[tf.newaxis, ...],
-                              axis=1)  # [N, d + 1]
+        di_lt_dj = tf.where(di < dj, 1, 0)
+        di_geq_dj = tf.where(di >= dj, 1, 0)
+        rank = rank + tf.reduce_sum(di_lt_dj * self.valid[tf.newaxis, ...],
+                                    axis=2)  # [N, d + 1]
+        rank = rank + tf.reduce_sum(di_geq_dj * self.valid[tf.newaxis, ...],
+                                    axis=1)  # [N, d + 1]
+        # rank = rank + tf.reduce_sum(tf.cast(di < dj, dtype=tf.int16) *
+        #                       self.valid[tf.newaxis, ...],
+        #                       axis=2)  # [N, d + 1]
+        # rank = rank + tf.reduce_sum(tf.cast(di >= dj, dtype=tf.int16) *
+        #                       self.valid[tf.newaxis, ...],
+        #                       axis=1)  # [N, d + 1]
 
         # If the point doesn't lie on the plane (sum != 0) bring it back
-        rank += _sum[..., tf.newaxis]  # (N, d + 1)
+        rank = rank + _sum[..., tf.newaxis]  # (N, d + 1)
         ls_zero = rank < 0
         gt_d = rank > self.d_
         rank = tf.where(ls_zero, rank + self.d_ + 1, rank)
-        rem0 = tf.where(ls_zero, rem0 + self.d_ + 1, rem0)
-        rank = tf.where(gt_d, rank - self.d_ - 1, rank)
-        rem0 = tf.where(gt_d, rem0 - self.d_ - 1, rem0)
+        rem0 = tf.where(ls_zero, rem0 + tf.cast(self.d_ + 1, dtype=tf_float),
+                        rem0)
+        rank = tf.where(gt_d, rank - (self.d_ + 1), rank)
+        rem0 = tf.where(gt_d, rem0 - tf.cast(self.d_ + 1, dtype=tf_float),
+                        rem0)
 
         # # Compute the barycentric coordinates (p.10 in [Adams et al. 2010])
         # barycentric = tf.zeros(
@@ -230,7 +244,7 @@ class Permutohedral:
         barycentric = tf.zeros(shape=[
             self.N_ * (self.d_ + 2),
         ],
-                               dtype=tf.float32)  # [N x (d + 2), ]
+                               dtype=tf_float)  # [N x (d + 2), ]
         vs = tf.reshape((elevated - rem0) * down_factor, shape=[
             -1,
         ])  # [N x (d + 1), ]
@@ -265,62 +279,107 @@ class Permutohedral:
         # Compute all vertices and their offset
         canonicalT = tf.transpose(self.canonical, perm=[1,
                                                         0])  # (d + 1, d + 1)
-        canonical_ext = tf.gather(canonicalT, rank)  # [N, d + 1, d + 1]
+        canonical_ext = tf.gather(canonicalT,
+                                  tf.cast(rank,
+                                          dtype=tf.int32))  # [N, d + 1, d + 1]
+        # rank_flat = tf.reshape(rank, shape=[
+        #     -1,
+        # ])  # [N x (d + 1), ]
+        # canonical_ext = tf.gather(canonicalT,
+        #                           rank_flat)  # [N x (d + 1), d + 1]
+        # canonical_ext = tf.reshape(canonical_ext,
+        #                            shape=[self.N_, self.d_ + 1,
+        #                                   self.d_ + 1])  # [N, d + 1, d + 1]
         canonical_ext = tf.transpose(canonical_ext,
                                      perm=[0, 2, 1])  # [N, d + 1, d + 1]
-        key = (rem0[..., tf.newaxis, :self.d_] + canonical_ext[..., :self.d_]
-               )  # [N, d + 1, d]
-        key = tf.concat([key, tf.zeros([self.N_, self.d_ + 1, 1])],
-                        axis=-1)  # [N, d + 1, d + 1]
+        key = (tf.cast(rem0[..., tf.newaxis, :self.d_], dtype=tf.int32) +
+               canonical_ext[..., :self.d_])  # [N, d + 1, d]
+        key = tf.concat(
+            [key, tf.zeros([self.N_, self.d_ + 1, 1], dtype=tf.int32)],
+            axis=-1)  # [N, d + 1, d + 1]
 
-        offset = tf.Variable(tf.zeros([self.N_, self.d_ + 1], dtype=tf.int32),
-                             trainable=False)
-        for k in range(self.N_):
-            for remainder in range(self.d_ + 1):
-                offset[k, remainder].assign(
-                    self.hash_table.find(key[k, remainder], True))
-        self.offset_ = tf.constant(offset)
-        self.rank_ = rank  # [N, d + 1]
-        self.barycentric_ = barycentric[..., :self.d_ + 1]  # [N, d + 1]
+        # ->> 2022.07.01 Hash.
+        # Keys in string format.
+        skey = tf.strings.reduce_join(tf.strings.as_string(key), axis=-1, separator=',') # [N, d + 1]
+        uniq_skey, sk_idx = tf.unique(tf.reshape(skey, shape=[-1, ])) # [M, ]
+        n_skey = tf.shape(uniq_skey)[0] # Get M
+        self.hash_table = tf.lookup.StaticHashTable(tf.lookup.KeyValueTensorInitializer(uniq_skey, tf.range(n_skey)), default_value=-1)
+        offset = self.hash_table.lookup(skey) # [N, d + 1]
+        tf.print('Getting offset...')
+        self.offset_ = tf.constant(offset, dtype=tf.int32)
 
-        # Find the neighbors of each lattice point
-        # Get the number of vertices in the lattice
-        self.M_ = self.hash_table.size()
+        hash_keys = tf.zeros([n_skey, self.d_], dtype=tf.int32)
+        filled = tf.zeros([n_skey, ], dtype=tf.int32)
+        def find_all_keys(k_and_sk):
+            k, sk = k_and_sk
+            idx = self.hash_table.lookup(sk)
+            if not filled[idx]:
+                indices = tf.constant([[idx]])
+                updates = tf.constant([k])
+                hash_keys = tf.tensor_scatter_nd_update(hash_keys, indices, updates)
+                filled = tf.tensor_scatter_nd_update(filled, indices, tf.ones([1, ]))
 
-        # Create the neighborhood structure
-        blur_neighbors = tf.Variable(tf.zeros([self.d_ + 1, self.M_, 2],
-                                              dtype=tf.int32),
-                                     trainable=False)
+        tf.map_fn(find_all_keys, [key, skey])
 
-        # For each of d+1 axes,
-        n1s = tf.Variable(
-            tf.zeros([self.M_, self.d_ + 1, self.d_ + 1], dtype=tf.int16),
-            trainable=False,
-        )  # [M, d + 1, d + 1]
-        n2s = tf.Variable(
-            tf.zeros([self.M_, self.d_ + 1, self.d_ + 1], dtype=tf.int16),
-            trainable=False,
-        )  # [M, d + 1, d + 1]
-        hash_keys = self.hash_table.keys_[:self.hash_table.key_size_ *
-                                          self.hash_table.filled_]
-        hash_keys = tf.reshape(
-            hash_keys,
-            shape=[self.hash_table.filled_,
-                   self.hash_table.key_size_])  # [M, d]
-        overflow_keys = tf.concat([hash_keys[1:, 0], [0]], axis=0)  # [M, ]
-        n1s[..., :self.d_].assign(hash_keys[:, tf.newaxis, :] - 1)
-        n2s[..., :self.d_].assign(hash_keys[:, tf.newaxis, :] + 1)
-        n1s.assign_add(self.ds[tf.newaxis, ...] + self.diagone[tf.newaxis, ...])
-        n2s.assign_sub(self.ds[tf.newaxis, ...] + self.diagone[tf.newaxis, ...])
-        n1s[:, self.d_, self.d_].assign(overflow_keys + self.d_)
-        n2s[:, self.d_, self.d_].assign(overflow_keys - self.d_)
+        for hkey, uniq_sk in zip(hash_keys, uniq_skey):
+            tf.print(hkey, uniq_sk)
 
-        for i in range(self.M_):
-            for j in range(self.d_ + 1):
-                blur_neighbors[j, i, 0].assign(self.hash_table.find(n1s[i, j]))
-                blur_neighbors[j, i, 1].assign(self.hash_table.find(n2s[i, j]))
+        # offset = tf.Variable(tf.zeros([self.N_, self.d_ + 1], dtype=tf.int32),
+        #                      trainable=False)
+        # tf.print('Hashing keys...')
+        # for k in range(self.N_):
+        #     tf.print('k: {} / {}'.format(k, self.N_))
+        #     for remainder in range(self.d_ + 1):
+        #         offset[k, remainder].assign(
+        #             self.hash_table.find(key[k, remainder], True))
+        #         tf.print('remainder: {} / {}'.format(remainder, self.d_ + 1))
+        # tf.print('Getting offset...')
+        # self.offset_ = tf.constant(offset)
+        # tf.print('Getting rank...')
+        # self.rank_ = rank  # [N, d + 1]
+        # tf.print('Getting barycentric...')
+        # self.barycentric_ = barycentric[..., :self.d_ + 1]  # [N, d + 1]
 
-        self.blur_neighbors_ = tf.constant(blur_neighbors)
+        # # Find the neighbors of each lattice point
+        # # Get the number of vertices in the lattice
+        # self.M_ = n_skey
+
+        # # Create the neighborhood structure
+        # blur_neighbors = tf.Variable(tf.zeros([self.d_ + 1, self.M_, 2],
+        #                                       dtype=tf.int32),
+        #                              trainable=False)
+
+        # # For each of d+1 axes,
+        # n1s = tf.Variable(
+        #     tf.zeros([self.M_, self.d_ + 1, self.d_ + 1], dtype=tf.int16),
+        #     trainable=False,
+        # )  # [M, d + 1, d + 1]
+        # n2s = tf.Variable(
+        #     tf.zeros([self.M_, self.d_ + 1, self.d_ + 1], dtype=tf.int16),
+        #     trainable=False,
+        # )  # [M, d + 1, d + 1]
+        # hash_keys = self.hash_table.keys_[:self.hash_table.key_size_ *
+        #                                   self.hash_table.filled_]
+        # hash_keys = tf.reshape(
+        #     hash_keys,
+        #     shape=[self.hash_table.filled_,
+        #            self.hash_table.key_size_])  # [M, d]
+        # overflow_keys = tf.concat([hash_keys[1:, 0], [0]], axis=0)  # [M, ]
+        # n1s[..., :self.d_].assign(tf.tile(hash_keys[:, tf.newaxis, :], [1, self.d_ + 1, 1]) - 1)
+        # n2s[..., :self.d_].assign(tf.tile(hash_keys[:, tf.newaxis, :], [1, self.d_ + 1, 1]) + 1)
+        # n1s.assign_add(self.ds[tf.newaxis, ...] +
+        #                self.diagone[tf.newaxis, ...])
+        # n2s.assign_sub(self.ds[tf.newaxis, ...] +
+        #                self.diagone[tf.newaxis, ...])
+        # n1s[:, self.d_, self.d_].assign(overflow_keys + self.d_)
+        # n2s[:, self.d_, self.d_].assign(overflow_keys - self.d_)
+
+        # for i in range(self.M_):
+        #     for j in range(self.d_ + 1):
+        #         blur_neighbors[j, i, 0].assign(self.hash_table.find(n1s[i, j]))
+        #         blur_neighbors[j, i, 1].assign(self.hash_table.find(n2s[i, j]))
+
+        # self.blur_neighbors_ = tf.constant(blur_neighbors)
 
     def seq_compute(self, inp, value_size, reverse):
         """
@@ -355,11 +414,12 @@ class Permutohedral:
             ],
         )  # [N x (d + 1), ]
 
-        inpT = tf.transpose(inp, perm=[1, 0])  # transpose to channel-first. [value_size, N]
+        inpT = tf.transpose(
+            inp, perm=[1, 0])  # transpose to channel-first. [value_size, N]
 
         def splat_channelwise(ch):
             ch_ext = tf.tile(ch[..., tf.newaxis],
-                              [1, self.d_ + 1])  # [N, (d + 1)]
+                             [1, self.d_ + 1])  # [N, (d + 1)]
             ch_flat = tf.reshape(
                 ch_ext,
                 [
@@ -371,13 +431,13 @@ class Permutohedral:
                 weights=ch_flat * ws,
                 minlength=self.M_ + 2,
                 maxlength=self.M_ + 2,
-                dtype=tf.float32,
+                dtype=tf_float,
             )
             return val_ch
 
         valuesT = tf.vectorized_map(splat_channelwise, inpT)
         values = tf.transpose(valuesT, perm=[1, 0])
-        new_values = tf.zeros([self.M_ + 2, value_size], dtype=tf.float32)
+        new_values = tf.zeros([self.M_ + 2, value_size], dtype=tf_float)
 
         # ->> Blur
         j_range = tf.range(self.d_, -1, -1) if reverse else tf.range(self.d_ +
