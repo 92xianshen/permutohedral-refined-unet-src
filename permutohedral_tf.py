@@ -9,126 +9,126 @@ enable_float64 = 0
 tf_float = tf.float64 if enable_float64 else tf.float32
 
 
-class HashTable:
-    """
-    Implement in TensorFlow.
-    Keep loop structures until get a replacement.
-    """
+# class HashTable:
+#     """
+#     Implement in TensorFlow.
+#     Keep loop structures until get a replacement.
+#     """
 
-    def __init__(self, key_size, n_elements) -> None:
-        self.key_size_ = tf.constant(tf.cast(key_size, dtype=tf.int32))
-        self.filled_ = tf.constant(0, dtype=tf.int32)
-        self.capacity_ = tf.constant(tf.cast(2 * n_elements, dtype=tf.int32))
-        self.keys_ = tf.Variable(
-            tf.zeros(
-                [
-                    (self.capacity_ // 2 + 10) * self.key_size_,
-                ],
-                dtype=tf.int32,
-            ),
-            trainable=False,
-        )
-        self.table_ = tf.Variable(
-            tf.ones(
-                [
-                    2 * n_elements,
-                ],
-                dtype=tf.int32,
-            ) * -1,
-            trainable=False,
-        )
+#     def __init__(self, key_size, n_elements) -> None:
+#         self.key_size_ = tf.constant(tf.cast(key_size, dtype=tf.int32))
+#         self.filled_ = tf.constant(0, dtype=tf.int32)
+#         self.capacity_ = tf.constant(tf.cast(2 * n_elements, dtype=tf.int32))
+#         self.keys_ = tf.Variable(
+#             tf.zeros(
+#                 [
+#                     (self.capacity_ // 2 + 10) * self.key_size_,
+#                 ],
+#                 dtype=tf.int32,
+#             ),
+#             trainable=False,
+#         )
+#         self.table_ = tf.Variable(
+#             tf.ones(
+#                 [
+#                     2 * n_elements,
+#                 ],
+#                 dtype=tf.int32,
+#             ) * -1,
+#             trainable=False,
+#         )
 
-    def grow(self):
-        # Create the new memory and copy the values in
-        tf.print("Hashtable grows...")
-        old_capacity = self.capacity_
-        self.capacity_ *= 2
-        old_keys = tf.Variable(
-            tf.zeros(
-                [
-                    (old_capacity + 10) * self.key_size_,
-                ],
-                dtype=tf.int32,
-            ),
-            trainable=False,
-        )
-        old_keys[:(old_capacity // 2 + 10) * self.key_size_].assign(self.keys_)
-        old_table = tf.Variable(
-            tf.ones(
-                [
-                    self.capacity_,
-                ],
-                dtype=tf.int32,
-            ) * -1,
-            trainable=False,
-        )
+#     def grow(self):
+#         # Create the new memory and copy the values in
+#         tf.print("Hashtable grows...")
+#         old_capacity = self.capacity_
+#         self.capacity_ *= 2
+#         old_keys = tf.Variable(
+#             tf.zeros(
+#                 [
+#                     (old_capacity + 10) * self.key_size_,
+#                 ],
+#                 dtype=tf.int32,
+#             ),
+#             trainable=False,
+#         )
+#         old_keys[:(old_capacity // 2 + 10) * self.key_size_].assign(self.keys_)
+#         old_table = tf.Variable(
+#             tf.ones(
+#                 [
+#                     self.capacity_,
+#                 ],
+#                 dtype=tf.int32,
+#             ) * -1,
+#             trainable=False,
+#         )
 
-        # Swap the memory
-        self.table_, old_table = old_table, self.table_
-        self.keys_, old_keys = old_keys, self.keys_
+#         # Swap the memory
+#         self.table_, old_table = old_table, self.table_
+#         self.keys_, old_keys = old_keys, self.keys_
 
-        # Reinsert each element
-        for i in range(old_capacity):
-            if old_table[i] >= 0:
-                e = old_table[i]
-                h = self.hash(self.get_key(e)) % self.capacity_
-                while self.table_[h] >= 0:
-                    if h < self.capacity_ - 1:
-                        h = h + 1
-                    else:
-                        h = 0
-                self.table_[h].assign(e)
+#         # Reinsert each element
+#         for i in range(old_capacity):
+#             if old_table[i] >= 0:
+#                 e = old_table[i]
+#                 h = self.hash(self.get_key(e)) % self.capacity_
+#                 while self.table_[h] >= 0:
+#                     if h < self.capacity_ - 1:
+#                         h = h + 1
+#                     else:
+#                         h = 0
+#                 self.table_[h].assign(e)
 
-        del old_table, old_keys
+#         del old_table, old_keys
 
-    def hash(self, k):
-        r = tf.Variable(0, dtype=tf.uint64, trainable=False)
-        for i in range(self.key_size_):
-            r.assign_add(tf.cast(k[i], dtype=tf.uint64))
-            r.assign(r * 1664525)
-        return tf.constant(r, dtype=tf.uint64)
+#     def hash(self, k):
+#         r = tf.Variable(0, dtype=tf.uint64, trainable=False)
+#         for i in range(self.key_size_):
+#             r.assign_add(tf.cast(k[i], dtype=tf.uint64))
+#             r.assign(r * 1664525)
+#         return tf.constant(r, dtype=tf.uint64)
 
-    def size(self):
-        return self.filled_
+#     def size(self):
+#         return self.filled_
 
-    def reset(self):
-        self.filled_ = tf.constant(0, dtype=tf.uint64)
-        self.table_.assign(tf.ones_like(self.table_) * -1)
+#     def reset(self):
+#         self.filled_ = tf.constant(0, dtype=tf.uint64)
+#         self.table_.assign(tf.ones_like(self.table_) * -1)
 
-    # @tf.function
-    def find(self, k, create=False):
-        if self.capacity_ <= 2 * self.filled_:
-            self.grow()
-        # Get the hash value
-        h = tf.cast(self.hash(k) % tf.cast(self.capacity_, dtype=tf.uint64),
-                    dtype=tf.int32)
-        # Find the element with the right key, using linear probing
-        while True:
-            e = self.table_[h]
-            if e == -1:
-                if create:
-                    # Insert a new key and return the new id
-                    self.keys_[self.filled_ *
-                               self.key_size_:self.filled_ * self.key_size_ +
-                               self.key_size_].assign(k[:self.key_size_])
-                    self.table_[h].assign(self.filled_)
-                    self.filled_ += 1
-                    return self.table_[h]
-                else:
-                    return -1
-            # Check if the current key is The One
-            good = tf.reduce_all(
-                self.keys_[e * self.key_size_:e * self.key_size_ +
-                           self.key_size_] == k[:self.key_size_])
-            if good:
-                return e
-            # Continue searching
-            h += 1
-            if h == self.capacity_:
-                h = 0
+#     # @tf.function
+#     def find(self, k, create=False):
+#         if self.capacity_ <= 2 * self.filled_:
+#             self.grow()
+#         # Get the hash value
+#         h = tf.cast(self.hash(k) % tf.cast(self.capacity_, dtype=tf.uint64),
+#                     dtype=tf.int32)
+#         # Find the element with the right key, using linear probing
+#         while True:
+#             e = self.table_[h]
+#             if e == -1:
+#                 if create:
+#                     # Insert a new key and return the new id
+#                     self.keys_[self.filled_ *
+#                                self.key_size_:self.filled_ * self.key_size_ +
+#                                self.key_size_].assign(k[:self.key_size_])
+#                     self.table_[h].assign(self.filled_)
+#                     self.filled_ += 1
+#                     return self.table_[h]
+#                 else:
+#                     return -1
+#             # Check if the current key is The One
+#             good = tf.reduce_all(
+#                 self.keys_[e * self.key_size_:e * self.key_size_ +
+#                            self.key_size_] == k[:self.key_size_])
+#             if good:
+#                 return e
+#             # Continue searching
+#             h += 1
+#             if h == self.capacity_:
+#                 h = 0
 
-    def get_key(self, i):
-        return self.keys_[i * self.key_size_:]
+#     def get_key(self, i):
+#         return self.keys_[i * self.key_size_:]
 
 
 class Permutohedral:
@@ -177,7 +177,7 @@ class Permutohedral:
             None,
             None,
         )
-        self.hash_table = HashTable(self.d_, self.N_ * (self.d_ + 1))
+        # self.hash_table = HashTable(self.d_, self.N_ * (self.d_ + 1))
 
     def init(self, feature):
         # Compute the simplex each feature lies in
@@ -300,29 +300,15 @@ class Permutohedral:
 
         # ->> 2022.07.01 Hash.
         # Keys in string format.
-        skey = tf.strings.reduce_join(tf.strings.as_string(key), axis=-1, separator=',') # [N, d + 1]
-        uniq_skey, sk_idx = tf.unique(tf.reshape(skey, shape=[-1, ])) # [M, ]
-        n_skey = tf.shape(uniq_skey)[0] # Get M
+        flat_key = tf.reshape(key, shape=[-1, self.d_ + 1]) # [N x (d + 1), d + 1]
+        hash_keys, _ = tf.raw_ops.UniqueV2(x=flat_key, axis=[0, ]) # [M, d + 1]
+        skey = tf.strings.reduce_join(tf.strings.as_string(flat_key), axis=-1, separator=',') # [N x (d + 1), ]
+        uniq_skey = tf.strings.reduce_join(tf.strings.as_string(hash_keys), axis=-1, separator=',') # [M, ]
+        n_skey = tf.shape(hash_keys)[0] # Get M
         self.hash_table = tf.lookup.StaticHashTable(tf.lookup.KeyValueTensorInitializer(uniq_skey, tf.range(n_skey)), default_value=-1)
-        offset = self.hash_table.lookup(skey) # [N, d + 1]
+        offset = self.hash_table.lookup(skey) # [N x (d + 1), ]
         tf.print('Getting offset...')
         self.offset_ = tf.constant(offset, dtype=tf.int32)
-
-        hash_keys = tf.zeros([n_skey, self.d_], dtype=tf.int32)
-        filled = tf.zeros([n_skey, ], dtype=tf.int32)
-        def find_all_keys(k_and_sk):
-            k, sk = k_and_sk
-            idx = self.hash_table.lookup(sk)
-            if not filled[idx]:
-                indices = tf.constant([[idx]])
-                updates = tf.constant([k])
-                hash_keys = tf.tensor_scatter_nd_update(hash_keys, indices, updates)
-                filled = tf.tensor_scatter_nd_update(filled, indices, tf.ones([1, ]))
-
-        tf.map_fn(find_all_keys, [key, skey])
-
-        for hkey, uniq_sk in zip(hash_keys, uniq_skey):
-            tf.print(hkey, uniq_sk)
 
         # offset = tf.Variable(tf.zeros([self.N_, self.d_ + 1], dtype=tf.int32),
         #                      trainable=False)
@@ -335,14 +321,31 @@ class Permutohedral:
         #         tf.print('remainder: {} / {}'.format(remainder, self.d_ + 1))
         # tf.print('Getting offset...')
         # self.offset_ = tf.constant(offset)
-        # tf.print('Getting rank...')
-        # self.rank_ = rank  # [N, d + 1]
-        # tf.print('Getting barycentric...')
-        # self.barycentric_ = barycentric[..., :self.d_ + 1]  # [N, d + 1]
+        tf.print('Getting rank...')
+        self.rank_ = rank  # [N, d + 1]
+        tf.print('Getting barycentric...')
+        self.barycentric_ = barycentric[..., :self.d_ + 1]  # [N, d + 1]
 
-        # # Find the neighbors of each lattice point
-        # # Get the number of vertices in the lattice
-        # self.M_ = n_skey
+        # Find the neighbors of each lattice point
+        # Get the number of vertices in the lattice
+        self.M_ = n_skey
+        hkeys = hash_keys[..., :self.d_] # [M, d]
+        overflow_keys = tf.concat([hash_keys[1:, 0], [0]], axis=0)  # [M, ]
+        n1s = tf.tile(hkeys[:, tf.newaxis, :], [1, self.d_ + 1, 1]) - 1 # [M, d + 1, d]
+        n2s = tf.tile(hkeys[:, tf.newaxis, :], [1, self.d_ + 1, 1]) + 1 # [M, d + 1, d]
+        n1s = tf.concat([n1s, tf.zeros([self.M_, self.d_ + 1, 1], dtype=tf.int32)], axis=-1) # [M, d + 1, d + 1]
+        n2s = tf.concat([n2s, tf.zeros([self.M_, self.d_ + 1, 1], dtype=tf.int32)], axis=-1) # [M, d + 1, d + 1]
+        n1s = n1s + self.ds[tf.newaxis, ...] + self.diagone[tf.newaxis, ...]
+        n2s = n2s + self.ds[tf.newaxis, ...] + self.diagone[tf.newaxis, ...]
+        n1s = tf.concat([n1s[..., :self.d_], tf.tile(overflow_keys[tf.newaxis, tf.newaxis, ...] + self.d_, [self.M_, self.d_ + 1, 1])], axis=-1) # [M, d + 1, d + 1]
+        n2s = tf.concat([n2s[..., :self.d_], tf.tile(overflow_keys[tf.newaxis, tf.newaxis, ...] - self.d_, [self.M_, self.d_ + 1, 1])], axis=-1) # [M, d + 1, d + 1]
+        n1s_str = tf.strings.reduce_join(tf.strings.as_string(n1s), axis=-1, separator=',') # [M, d + 1]
+        n2s_str = tf.strings.reduce_join(tf.strings.as_string(n2s), axis=-1, separator=',') # [M, d + 1]
+        blur_neighbors0 = self.hash_table.lookup(n1s_str) # [M, d + 1]
+        blur_neighbors1 = self.hash_table.lookup(n2s_str) # [M, d + 1]
+        blur_neighbors = tf.stack([blur_neighbors0, blur_neighbors1], axis=-1) # [M, d + 1, 2]
+        self.blur_neighbors_ = tf.transpose(blur_neighbors, perm=[1, 0, 2]) # [d + 1, M, 2]
+
 
         # # Create the neighborhood structure
         # blur_neighbors = tf.Variable(tf.zeros([self.d_ + 1, self.M_, 2],
@@ -451,16 +454,16 @@ class Permutohedral:
             n2_vals = tf.gather(values, n2s)
 
             new_vals = old_vals + 0.5 * (n1_vals + n2_vals)
-            new_values = tf.concat(new_values[0:1],
+            new_values = tf.concat([new_values[0:1],
                                    new_vals,
-                                   new_values[self.M_ + 1:],
+                                   new_values[self.M_ + 1:]],
                                    axis=0)
 
             values, new_values = new_values, values
 
         # ->> Slice
         # Alpha is a magic scaling constant (write Andrew if you really wanna understand this)
-        alpha = 1.0 / (1 + tf.pow(2.0, -self.d_))
+        alpha = 1.0 / (1 + tf.pow(2.0, tf.cast(-self.d_, dtype=tf.float32)))
 
         out = ws[..., tf.newaxis] * tf.gather(values, os) * alpha
         out = tf.reshape(out, shape=[self.N_, self.d_ + 1, value_size])

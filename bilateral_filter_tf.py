@@ -27,20 +27,37 @@ lattice_tf = PermutohedralTF(N, d)
 lattice_tf.init(features)
 print('Lattice of TF initialized.')
 
-# NumPy impl.
-lattice_np = PermutohedralNP(N, d)
-lattice_np.init(features)
-print('Lattice of NumPy initialized.')
+all_ones = np.ones((N, 1), dtype=np.float32)
+all_ones = lattice_tf.compute(all_ones)
+all_ones = all_ones.numpy()
+all_ones = all_ones.reshape((h, w, 1))
 
-print(1 if np.allclose(lattice_np.rank_, lattice_tf.rank_.numpy()) else 0)
-for rnk_np, rnk_tf in zip(lattice_np.rank_, lattice_tf.rank_.numpy()):
-    if not np.allclose(rnk_np, rnk_tf):
-        print(rnk_np, rnk_tf)
+src = im.reshape((-1, n_channels))
+dst = lattice_tf.compute(src.astype(np.float32))
+dst = dst.numpy()
+dst = dst.reshape((h, w, n_channels))
+dst = dst / all_ones
+dst = (dst - dst.min()) / (dst.max() - dst.min() + 1e-5)
 
-print(1 if np.allclose(lattice_np.barycentric_, lattice_tf.barycentric_.numpy()) else 0)
-for bc_np, bc_tf in zip(lattice_np.barycentric_, lattice_tf.barycentric_.numpy()):
-    if not np.allclose(bc_np, bc_tf):
-        print(bc_np, bc_tf)
+cv2.imshow('im', im[..., ::-1])
+cv2.imshow('im_filtered', dst[..., ::-1])
+# # cv2.imshow('im_filtered2', dst2[..., ::-1])
+cv2.waitKey()
+
+# # NumPy impl.
+# lattice_np = PermutohedralNP(N, d)
+# lattice_np.init(features)
+# print('Lattice of NumPy initialized.')
+
+# print(1 if np.allclose(lattice_np.rank_, lattice_tf.rank_.numpy()) else 0)
+# for rnk_np, rnk_tf in zip(lattice_np.rank_, lattice_tf.rank_.numpy()):
+#     if not np.allclose(rnk_np, rnk_tf):
+#         print(rnk_np, rnk_tf)
+
+# print(1 if np.allclose(lattice_np.barycentric_, lattice_tf.barycentric_.numpy()) else 0)
+# for bc_np, bc_tf in zip(lattice_np.barycentric_, lattice_tf.barycentric_.numpy()):
+#     if not np.allclose(bc_np, bc_tf):
+#         print(bc_np, bc_tf)
 
 # all_ones = np.ones((N, 1), dtype=np.float32)
 # all_ones = lattice.compute(all_ones)
