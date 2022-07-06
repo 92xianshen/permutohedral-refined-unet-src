@@ -8,9 +8,10 @@ import numpy as np
 import tensorflow as tf
 
 
-class Permutohedral:
+class Permutohedral(tf.Module):
 
     def __init__(self, N, d) -> None:
+        super().__init__()
         self.N_, self.M_, self.d_ = N, 0, d
 
         canonical = np.zeros((d + 1, d + 1), dtype=np.int32)  # (d + 1, d + 1)
@@ -46,6 +47,7 @@ class Permutohedral:
         self.ds = tf.constant(ds, dtype=tf.int32)  # [d + 1, ]
         self.diagone = tf.constant(diagone, dtype=tf.int32)  # [d + 1, d + 1]
 
+        self.hash_table = None
         self.blur_neighbors_ = None
         self.offsets_ = None
         self.ranks_ = None
@@ -120,12 +122,17 @@ class Permutohedral:
                                                updates=vs)  # [N x (d + 2), ]
         barycentric = tf.reshape(barycentric,
                                  shape=[self.N_, (self.d_ + 2)])  # [N, d + 2]
-        idx0 = tf.stack([tf.range(self.N_), tf.zeros([self.N_, ], dtype=tf.int32)], axis=-1)  # [N, 2]
+        idx0 = tf.stack(
+            [tf.range(self.N_),
+             tf.zeros([
+                 self.N_,
+             ], dtype=tf.int32)],
+            axis=-1)  # [N, 2]
         barycentric = tf.tensor_scatter_nd_add(
             tensor=barycentric,
             indices=idx0,
             updates=(1. + barycentric[..., self.d_ + 1]))  # [N, d + 2]
-        
+
         # Compute all vertices and their offset
         canonicalT = tf.transpose(self.canonical, perm=[1,
                                                         0])  # [d + 1, d + 1]
@@ -185,18 +192,30 @@ class Permutohedral:
         n2s = n2s + self.ds[tf.newaxis,
                             ...] + self.diagone[tf.newaxis,
                                                 ...]  # [M, d + 1, d + 1]
-        n1s = tf.concat([
-            n1s[..., :self.d_],
-            tf.tile(ofkeys[..., tf.newaxis, tf.newaxis] + self.d_,
-                    [1, self.d_ + 1, 1])
+        # n1s = tf.concat([
+        #     n1s[..., :self.d_],
+        #     tf.tile(ofkeys[..., tf.newaxis, tf.newaxis] + self.d_,
+        #             [1, self.d_ + 1, 1])
+        # ],
+        #                 axis=-1)  # [M, d + 1, d + 1]
+        idx_of = tf.stack([
+            tf.range(self.M_),
+            tf.ones(self.M_, dtype=tf.int32) * self.d_,
+            tf.ones(self.M_, dtype=tf.int32) * self.d_
         ],
-                        axis=-1)  # [M, d + 1, d + 1]
-        n2s = tf.concat([
-            n2s[..., :self.d_],
-            tf.tile(ofkeys[..., tf.newaxis, tf.newaxis] - self.d_,
-                    [1, self.d_ + 1, 1])
-        ],
-                        axis=-1)  # [M, d + 1, d + 1]
+                          axis=-1)  # [M, 3]
+        n1s = tf.tensor_scatter_nd_update(
+            tensor=n1s, indices=idx_of,
+            updates=(ofkeys + self.d_))  # [M, d + 1, d + 1]
+        # n2s = tf.concat([
+        #     n2s[..., :self.d_],
+        #     tf.tile(ofkeys[..., tf.newaxis, tf.newaxis] - self.d_,
+        #             [1, self.d_ + 1, 1])
+        # ],
+        #                 axis=-1)  # [M, d + 1, d + 1]
+        n2s = tf.tensor_scatter_nd_update(
+            tensor=n2s, indices=idx_of,
+            updates=(ofkeys - self.d_))  # [M, d + 1, d + 1]
         sn1s = tf.strings.reduce_join(tf.strings.as_string(n1s),
                                       axis=-1,
                                       separator=',')  # [M, d + 1]
@@ -285,6 +304,6 @@ class Permutohedral:
         return out
 
     def compute(self, inp, reverse=False):
-        size, ch = tf.shape(inp)
-        out = self.seq_compute(inp, ch, reverse)
+        size, n_ch = tf.shape(inp)[0], tf.shape(inp)[1]
+        out = self.seq_compute(inp, n_ch, reverse)
         return out
