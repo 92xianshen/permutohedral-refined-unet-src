@@ -1,11 +1,11 @@
 import numpy as np
 from PIL import Image
-from permutohedral_tf import Permutohedral as PermutohedralTF
-from permutohedral_numpified import Permutohedral as PermutohedralNP
+from permutohedral_tf_v2 import Permutohedral as PermutohedralTF
+# from permutohedral_numpified import Permutohedral as PermutohedralNP
 import matplotlib.pyplot as plt
 import cv2
 
-im = Image.open('../data/lena.small.jpg')
+im = Image.open('../data/lena.jpg')
 im = np.array(im) / 255.
 
 h, w, n_channels = im.shape
