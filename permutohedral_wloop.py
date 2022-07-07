@@ -102,21 +102,22 @@ class Permutohedral:
         # Allocate the class memory
         # pass
 
-        # # Allocate the local memory
-        # scale_factor = np.zeros((self.d_, ), dtype=np.float32)
-        # elevated = np.zeros((self.d_ + 1, ), dtype=np.float32)
-        # rem0 = np.zeros((self.d_ + 1, ), dtype=np.float32)
-        # barycentric = np.zeros((self.d_ + 2, ), dtype=np.float32)
-        # rank = np.zeros((self.d_ + 1, ), dtype=np.short)
-        # canonical = np.zeros( (self.d_ + 1, self.d_ + 1), dtype=np.short)
-        # key = np.zeros((self.d_ + 1, ), dtype=np.short)
+        # Allocate the local memory
+        scale_factor = np.zeros((self.d_, ), dtype=np.float32)
+        elevated = np.zeros((self.d_ + 1, ), dtype=np.float32)
+        rem0 = np.zeros((self.d_ + 1, ), dtype=np.float32)
+        barycentric = np.zeros((self.d_ + 2, ), dtype=np.float32)
+        rank = np.zeros((self.d_ + 1, ), dtype=np.short)
+        canonical = np.zeros( (self.d_ + 1, self.d_ + 1), dtype=np.short)
+        key = np.zeros((self.d_ + 1, ), dtype=np.short)
 
         # ->> 2022.05.27 Allocate the local memory, numpifying
-        scale_factor = np.zeros((self.d_, ), dtype=np.float32)
-        barycentric = np.zeros((self.d_ + 2, ), dtype=np.float32)
-        rank = np.zeros((self.d_ + 1, self.N_), dtype=np.short)
-        canonical = np.zeros((self.d_ + 1, self.d_ + 1), dtype=np.short)
-        key = np.zeros((self.d_ + 1, ), dtype=np.short)
+        # scale_factor = np.zeros((self.d_, ), dtype=np.float32)
+        # elevated = np.zeros((self.d_ + 1, ), dtype=np.float32)
+        # barycentric = np.zeros((self.d_ + 2, ), dtype=np.float32)
+        # rank = np.zeros((self.d_ + 1, self.N_), dtype=np.short)
+        # canonical = np.zeros((self.d_ + 1, self.d_ + 1), dtype=np.short)
+        # key = np.zeros((self.d_ + 1, ), dtype=np.short)
 
         # Compute the canonical simplex
         # for i in range(self.d_ + 1):

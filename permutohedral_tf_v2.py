@@ -189,15 +189,10 @@ class Permutohedral(tf.Module):
         n1s = n1s + self.ds[tf.newaxis,
                             ...] + self.diagone[tf.newaxis,
                                                 ...]  # [M, d + 1, d + 1]
-        n2s = n2s + self.ds[tf.newaxis,
-                            ...] + self.diagone[tf.newaxis,
+        n2s = n2s - self.ds[tf.newaxis,
+                            ...] - self.diagone[tf.newaxis,
                                                 ...]  # [M, d + 1, d + 1]
-        # n1s = tf.concat([
-        #     n1s[..., :self.d_],
-        #     tf.tile(ofkeys[..., tf.newaxis, tf.newaxis] + self.d_,
-        #             [1, self.d_ + 1, 1])
-        # ],
-        #                 axis=-1)  # [M, d + 1, d + 1]
+
         idx_of = tf.stack([
             tf.range(self.M_),
             tf.ones(self.M_, dtype=tf.int32) * self.d_,
@@ -207,25 +202,22 @@ class Permutohedral(tf.Module):
         n1s = tf.tensor_scatter_nd_update(
             tensor=n1s, indices=idx_of,
             updates=(ofkeys + self.d_))  # [M, d + 1, d + 1]
-        # n2s = tf.concat([
-        #     n2s[..., :self.d_],
-        #     tf.tile(ofkeys[..., tf.newaxis, tf.newaxis] - self.d_,
-        #             [1, self.d_ + 1, 1])
-        # ],
-        #                 axis=-1)  # [M, d + 1, d + 1]
         n2s = tf.tensor_scatter_nd_update(
             tensor=n2s, indices=idx_of,
             updates=(ofkeys - self.d_))  # [M, d + 1, d + 1]
+
         sn1s = tf.strings.reduce_join(tf.strings.as_string(n1s),
                                       axis=-1,
                                       separator=',')  # [M, d + 1]
         sn2s = tf.strings.reduce_join(tf.strings.as_string(n2s),
                                       axis=-1,
                                       separator=',')  # [M, d + 1]
+
         blur_neighbors0 = self.hash_table.lookup(sn1s)  # [M, d + 1]
         blur_neighbors1 = self.hash_table.lookup(sn2s)  # [M, d + 1]
         blur_neighbors = tf.stack([blur_neighbors0, blur_neighbors1],
                                   axis=-1)  # [M, d + 1, 2]
+
         self.blur_neighbors_ = blur_neighbors  # [M, d + 1, 2]
 
     def seq_compute(self, inp, value_size, reverse):
@@ -273,23 +265,29 @@ class Permutohedral(tf.Module):
             )
             return val_ch
 
-        valuesT = tf.vectorized_map(splat_channelwise, inpT)
-        values = tf.transpose(valuesT, perm=[1, 0])
-        new_values = tf.zeros([self.M_ + 2, value_size], dtype=tf.float32)
+        valuesT = tf.vectorized_map(splat_channelwise,
+                                    inpT)  # [value_size, M + 2]
+        values = tf.transpose(valuesT, perm=[1, 0])  # [M + 2, value_size]
+        new_values = tf.zeros([self.M_ + 2, value_size],
+                              dtype=tf.float32)  # [M + 2, value_size]
 
         # ->> Blur
         j_range = tf.range(self.d_, -1, -1) if reverse else tf.range(self.d_ +
                                                                      1)
         for j in j_range:
-            old_vals = values[1:self.M_ + 1]
-            n1s = self.blur_neighbors_[:self.M_, j, 0] + 1
-            n2s = self.blur_neighbors_[:self.M_, j, 1] + 1
-            n1_vals = tf.gather(values, n1s)
-            n2_vals = tf.gather(values, n2s)
+            old_vals = values[1:self.M_ + 1]  # [M, value_size]
+            n1s = self.blur_neighbors_[:self.M_, j, 0] + 1  # [M, ]
+            n2s = self.blur_neighbors_[:self.M_, j, 1] + 1  # [M, ]
+            n1_vals = tf.gather(values, n1s)  # [M, value_size]
+            n2_vals = tf.gather(values, n2s)  # [M, value_size]
 
             new_vals = old_vals + 0.5 * (n1_vals + n2_vals)
-            new_values = tf.concat(
-                [new_values[0:1], new_vals, new_values[self.M_ + 1:]], axis=0)
+
+            idx_nv = tf.range(1, self.M_ + 1)  # [M, ]
+            new_values = tf.tensor_scatter_nd_update(
+                tensor=new_values,
+                indices=idx_nv[..., tf.newaxis],
+                updates=new_vals)
 
             values, new_values = new_values, values
 
@@ -303,6 +301,7 @@ class Permutohedral(tf.Module):
 
         return out
 
+    # @tf.function
     def compute(self, inp, reverse=False):
         size, n_ch = tf.shape(inp)[0], tf.shape(inp)[1]
         out = self.seq_compute(inp, n_ch, reverse)
