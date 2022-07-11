@@ -1,12 +1,12 @@
 import numpy as np
 from PIL import Image
-from permutohedral_tf_v3 import Permutohedral as PermutohedralTF
-from permutohedral_tf_v2 import Permutohedral as PermutohedralTFV2
+from permutohedral_tf import Permutohedral as PermutohedralTF
+# from permutohedral_tf_v2 import Permutohedral as PermutohedralTFV2
 # from permutohedral_numpified import Permutohedral as PermutohedralNP
 import matplotlib.pyplot as plt
 import cv2
 
-im = Image.open('../data/lena.jpg')
+im = Image.open('../../data/lena.jpg')
 im = np.array(im) / 255.
 
 h, w, n_channels = im.shape
@@ -40,23 +40,23 @@ dst = dst.reshape((h, w, n_channels))
 dst = dst / norms
 dst = (dst - dst.min()) / (dst.max() - dst.min() + 1e-5)
 
-lattice_tf_v2 = PermutohedralTFV2(N, d)
-lattice_tf_v2.init(features)
-print('Lattice v2 of TF initialized.')
+# lattice_tf_v2 = PermutohedralTFV2(N, d)
+# lattice_tf_v2.init(features)
+# print('Lattice v2 of TF initialized.')
 
-norms_v2 = lattice_tf_v2.compute(all_ones)
-norms_v2 = norms_v2.numpy()
-norms_v2 = norms_v2.reshape((h, w, 1))
+# norms_v2 = lattice_tf_v2.compute(all_ones)
+# norms_v2 = norms_v2.numpy()
+# norms_v2 = norms_v2.reshape((h, w, 1))
 
-dst_v2 = lattice_tf_v2.compute(src.astype(np.float32))
-dst_v2 = dst_v2.numpy()
-dst_v2 = dst_v2.reshape((h, w, n_channels))
-dst_v2 = dst_v2 / norms_v2
-dst_v2 = (dst_v2 - dst_v2.min()) / (dst_v2.max() - dst_v2.min() + 1e-5)
+# dst_v2 = lattice_tf_v2.compute(src.astype(np.float32))
+# dst_v2 = dst_v2.numpy()
+# dst_v2 = dst_v2.reshape((h, w, n_channels))
+# dst_v2 = dst_v2 / norms_v2
+# dst_v2 = (dst_v2 - dst_v2.min()) / (dst_v2.max() - dst_v2.min() + 1e-5)
 
 cv2.imshow('im', im[..., ::-1])
 cv2.imshow('dst', dst[..., ::-1])
-cv2.imshow('dst v2', dst_v2[..., ::-1])
+# cv2.imshow('dst v2', dst_v2[..., ::-1])
 # # cv2.imshow('im_filtered2', dst2[..., ::-1])
 cv2.waitKey()
 
