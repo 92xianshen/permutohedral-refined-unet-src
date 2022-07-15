@@ -61,24 +61,17 @@ def _diagonal_compatibility(shape):
 def _potts_compatibility(shape):
     return -1 * _diagonal_compatibility(shape)
 
-
 # unary first
-# @tf.function
-def inference(unary, image, height, width, num_classes, theta_alpha, theta_beta, theta_gamma, spatial_compat, bilateral_compat, num_iterations):
-    # Check if data scale of `image` is [0, 1]
-    tf.debugging.assert_less_equal(tf.reduce_max(image), 1.)
-    tf.debugging.assert_greater_equal(tf.reduce_min(image), 0.)
-    # Check if `image` is three-channel and (h, w, 3)
-    tf.debugging.assert_rank(image, 3)
-    tf.debugging.assert_equal(tf.shape(image)[-1], 3)
-    # Check if theta_beta is float and < 1
-    tf.debugging.assert_less_equal(theta_beta, 1.)
-
-    # Sizes and dims of spatial and color features
-    d_spatial, d_image = 2, tf.shape(image)[-1]
-    n_feats = height * width
-    d_bifeats = d_spatial + d_image
-    d_spfeats = d_spatial
+@tf.function
+def inference(unary, image, spatial_filter, bilateral_filter, height, width, num_classes, theta_alpha, theta_beta, theta_gamma, spatial_compat, bilateral_compat, num_iterations):
+    # # Check if data scale of `image` is [0, 1]
+    # tf.debugging.assert_less_equal(tf.reduce_max(image), 1.)
+    # tf.debugging.assert_greater_equal(tf.reduce_min(image), 0.)
+    # # Check if `image` is three-channel and (h, w, 3)
+    # tf.debugging.assert_rank(image, 3)
+    # tf.debugging.assert_equal(tf.shape(image)[-1], 3)
+    # # Check if theta_beta is float and < 1
+    # tf.debugging.assert_less_equal(theta_beta, 1.)
 
     # spatial_weights = spatial_compat * _diagonal_compatibility((num_classes, num_classes)) # [n_classes, n_classes]
     # bilateral_weights = bilateral_compat * _diagonal_compatibility((num_classes, num_classes)) # [n_classes, n_classes]
@@ -93,10 +86,7 @@ def inference(unary, image, height, width, num_classes, theta_alpha, theta_beta,
     
     bilateral_feats = tf.concat([tf.stack([xs, ys], axis=-1) / theta_alpha, image / theta_beta], axis=-1) # [h, w, d_bifeats]
     bilateral_feats = tf.reshape(bilateral_feats, shape=[n_feats, d_bifeats]) # [n_feats, d_bifeats]
-    
 
-    bilateral_filter = PermutohedralTF(n_feats, d_bifeats)
-    spatial_filter = PermutohedralTF(n_feats, d_spfeats)
     bilateral_filter.init(bilateral_feats)
     spatial_filter.init(spatial_feats)
 
@@ -144,8 +134,8 @@ def inference(unary, image, height, width, num_classes, theta_alpha, theta_beta,
 
 
 if __name__ == "__main__":
-    img = cv2.imread('../../data/examples/im3.png')
-    anno_rgb = cv2.imread('../../data/examples/anno3.png').astype(np.uint32)
+    img = cv2.imread('../../data/examples/im1.png')
+    anno_rgb = cv2.imread('../../data/examples/anno1.png').astype(np.uint32)
     anno_lbl = anno_rgb[:,:,0] + (anno_rgb[:,:,1] << 8) + (anno_rgb[:,:,2] << 16)
 
     colors, labels = np.unique(anno_lbl, return_inverse=True)
@@ -170,7 +160,15 @@ if __name__ == "__main__":
     unary = np.transpose(unary, (1, 2, 0))
     print(unary.shape, img.shape)
 
-    pred = inference(tf.constant(unary.astype(np.float32)), tf.constant((img / 255.).astype(np.float32)), height, width, n_labels, theta_alpha=80., theta_beta=.0625, theta_gamma=3., spatial_compat=3., bilateral_compat=10., num_iterations=10)
+    # Sizes and dims of spatial and color features
+    d_spatial, d_image = 2, img.shape[-1]
+    n_feats = height * width
+    d_bifeats = d_spatial + d_image
+    d_spfeats = d_spatial
+    bilateral_filter = PermutohedralTF(n_feats, d_bifeats)
+    spatial_filter = PermutohedralTF(n_feats, d_spfeats)
+
+    pred = inference(tf.constant(unary.astype(np.float32)), tf.constant((img / 255.).astype(np.float32)), spatial_filter, bilateral_filter, height, width, n_labels, theta_alpha=80., theta_beta=.0625, theta_gamma=3., spatial_compat=3., bilateral_compat=10., num_iterations=10)
     pred = pred.numpy()
     
     MAP = np.argmax(pred, axis=-1)

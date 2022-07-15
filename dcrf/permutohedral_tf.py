@@ -243,28 +243,21 @@ class Permutohedral(tf.Module):
         valuesT = tf.vectorized_map(splat_channelwise,
                                     inpT)  # [value_size, M + 2]
         values = tf.transpose(valuesT, perm=[1, 0])  # [M + 2, value_size]
-        new_values = tf.zeros([self.M_ + 2, value_size],
-                              dtype=tf.float32)  # [M + 2, value_size]
 
         # ->> Blur
         j_range = tf.range(self.d_, -1, -1) if reverse else tf.range(self.d_ +
                                                                      1)
         for j in j_range:
-            old_vals = values[1:self.M_ + 1]  # [M, value_size]
             n1s = self.blur_neighbors_[:self.M_, j, 0] + 1  # [M, ]
             n2s = self.blur_neighbors_[:self.M_, j, 1] + 1  # [M, ]
             n1_vals = tf.gather(values, n1s)  # [M, value_size]
             n2_vals = tf.gather(values, n2s)  # [M, value_size]
 
-            new_vals = old_vals + 0.5 * (n1_vals + n2_vals)
-
             idx_nv = tf.range(1, self.M_ + 1)  # [M, ]
-            new_values = tf.tensor_scatter_nd_update(
-                tensor=new_values,
+            values = tf.tensor_scatter_nd_add(
+                tensor=values,
                 indices=idx_nv[..., tf.newaxis],
-                updates=new_vals)
-
-            values, new_values = new_values, values
+                updates=0.5 * (n1_vals + n2_vals))
 
         # ->> Slice
         # Alpha is a magic scaling constant (write Andrew if you really wanna understand this)
