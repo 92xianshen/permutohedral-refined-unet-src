@@ -30,7 +30,7 @@ class Permutohedral(tf.Module):
         self.E = tf.constant(E, dtype=tf.float32)  # [d + 1, d]
 
         # Expected standard deviation of our filter (p.6 in [Adams et al. 2010])
-        inv_std_dev = np.sqrt(2.0 / 3.0) * (d + 1)
+        inv_std_dev = np.sqrt(2.0 / 3.0) * np.float32(d + 1)
         self.inv_std_dev = tf.constant(inv_std_dev, dtype=tf.float32)
 
         # Compute the diagonal part of E (p.5 in [Adams et al 2010])
@@ -63,8 +63,8 @@ class Permutohedral(tf.Module):
                                                             0]))  # [N, d + 1]
 
         # Find the closest 0-colored simplex through rounding
-        down_factor = 1.0 / (self.d_ + 1)
-        up_factor = self.d_ + 1
+        down_factor = 1.0 / tf.cast(self.d_ + 1, dtype=tf.float32)
+        up_factor = tf.cast(self.d_ + 1, dtype=tf.float32)
         v = down_factor * elevated  # [N, d + 1]
         up = tf.math.ceil(v) * up_factor  # [N, d + 1]
         down = tf.math.floor(v) * up_factor  # [N, d + 1]
@@ -243,32 +243,25 @@ class Permutohedral(tf.Module):
         valuesT = tf.vectorized_map(splat_channelwise,
                                     inpT)  # [value_size, M + 2]
         values = tf.transpose(valuesT, perm=[1, 0])  # [M + 2, value_size]
-        new_values = tf.zeros([self.M_ + 2, value_size],
-                              dtype=tf.float32)  # [M + 2, value_size]
 
         # ->> Blur
         j_range = tf.range(self.d_, -1, -1) if reverse else tf.range(self.d_ +
                                                                      1)
         for j in j_range:
-            old_vals = values[1:self.M_ + 1]  # [M, value_size]
             n1s = self.blur_neighbors_[:self.M_, j, 0] + 1  # [M, ]
             n2s = self.blur_neighbors_[:self.M_, j, 1] + 1  # [M, ]
             n1_vals = tf.gather(values, n1s)  # [M, value_size]
             n2_vals = tf.gather(values, n2s)  # [M, value_size]
 
-            new_vals = old_vals + 0.5 * (n1_vals + n2_vals)
-
             idx_nv = tf.range(1, self.M_ + 1)  # [M, ]
-            new_values = tf.tensor_scatter_nd_update(
-                tensor=new_values,
+            values = tf.tensor_scatter_nd_add(
+                tensor=values,
                 indices=idx_nv[..., tf.newaxis],
-                updates=new_vals)
-
-            values, new_values = new_values, values
+                updates=0.5 * (n1_vals + n2_vals))
 
         # ->> Slice
         # Alpha is a magic scaling constant (write Andrew if you really wanna understand this)
-        alpha = 1.0 / (1 + tf.pow(2.0, -self.d_))
+        alpha = 1.0 / (1.0 + tf.pow(2.0, -tf.cast(self.d_, dtype=tf.float32)))
 
         out = ws[..., tf.newaxis] * tf.gather(values, os) * alpha
         out = tf.reshape(out, shape=[self.N_, self.d_ + 1, value_size])
