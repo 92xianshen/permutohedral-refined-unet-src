@@ -132,7 +132,7 @@ class Permutohedral():
 
         # Shift all values by 1 such that -1 -> 0 (used for blurring)
         self.os = offsets.reshape(-1) + 1 # (N * (d + 1), )
-        self.ws = barycentrics[..., self.d + 1].reshape(-1) # (N * (d + 1), )
+        self.ws = barycentrics[..., :self.d + 1].reshape(-1) # (N * (d + 1), )
         self.blur_neighbors = self.blur_neighbors.reshape((self.M, self.d + 1, 2)) + 1 # (M, d + 1, 2)
 
 
@@ -144,7 +144,7 @@ class Permutohedral():
         values = np.zeros((self.M + 2, value_size), dtype=np.float32)
 
         # ->> Splat
-        for v in value_size:
+        for v in np.arange(value_size):
             ch = np.repeat(inp[..., v:v + 1], repeats=self.d + 1, axis=-1) # (N, d + 1)
             ch = ch.reshape(-1) # (N * (d + 1), )
             values[..., v] = np.bincount(self.os, weights=ch * self.ws, minlength=self.M + 2)
