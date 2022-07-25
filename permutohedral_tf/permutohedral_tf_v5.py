@@ -54,6 +54,7 @@ class Permutohedral(tf.Module):
         self.os = None
         self.ws = None
 
+    @tf.function
     def init(self, features):
         # Compute the simplex each feature lies in
         # !!! Shape of feature [N, d]
@@ -174,12 +175,16 @@ class Permutohedral(tf.Module):
             tf.strings.as_string(hkeys), axis=-1, separator=","
         )  # [M, ]
         self.M = tf.shape(hkeys)[0]  # Get M
-        hash_table = tf.lookup.StaticHashTable(
-            tf.lookup.KeyValueTensorInitializer(
-                skeys_uniq, tf.range(self.M, dtype=tf.int32)
-            ),
-            default_value=-1,
-        )
+
+        # Create `hash_table`
+        hash_table = tf.lookup.experimental.MutableHashTable(key_dtype=tf.string, value_dtype=tf.int32, default_value=-1)
+        hash_table.insert(keys=skeys_uniq, values=tf.range(self.M, dtype=tf.int32))
+        # hash_table = tf.lookup.StaticHashTable(
+        #     tf.lookup.KeyValueTensorInitializer(
+        #         skeys_uniq, tf.range(self.M, dtype=tf.int32)
+        #     ),
+        #     default_value=-1,
+        # )
         offset = hash_table.lookup(skeys)  # [N x (d + 1), ]
 
         # Find the neighbors of each lattice point
@@ -216,6 +221,8 @@ class Permutohedral(tf.Module):
         blur_neighbors = tf.stack(
             [blur_neighbors0, blur_neighbors1], axis=-1
         )  # [M, d + 1, 2]
+        # Empty `hash_table`
+        hash_table.remove(keys=skeys_uniq)
 
         # Shift all values by 1 such that -1 -> 0 (used for blurring)
         self.os = (
@@ -235,6 +242,7 @@ class Permutohedral(tf.Module):
         )  # [N x (d + 1), ]
         self.blur_neighbors = blur_neighbors + 1
 
+    @tf.function
     def seq_compute(self, inp, value_size, reverse):
         """
         Compute sequentially.
@@ -283,6 +291,7 @@ class Permutohedral(tf.Module):
         # ->> Blur
         j_range = tf.range(self.d, -1, -1) if reverse else tf.range(self.d + 1)
         idx_nv = tf.range(1, self.M + 1)  # [M, ]
+        
         for j in j_range:
             n1s = self.blur_neighbors[: self.M, j, 0]  # [M, ]
             n2s = self.blur_neighbors[: self.M, j, 1]  # [M, ]
