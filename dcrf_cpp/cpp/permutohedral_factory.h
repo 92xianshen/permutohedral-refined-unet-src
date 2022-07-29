@@ -213,10 +213,7 @@ void cppInit(const float *features, const int N, const int d, int *os, float *ws
         }
 
         // Compute the barycentric coordinates (p.10 in [Adams et al., 2010])
-        for (int i = 0; i < d + 2; i++)
-        {
-            barycentric[i] = 0;
-        }
+        fill(barycentric, barycentric + d + 2, 0);
         for (int i = 0; i < d + 1; i++)
         {
             float v = (elevated[i] - rem0[i]) * down_factor;
