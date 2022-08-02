@@ -111,21 +111,19 @@ protected:
     float alpha_ = 0.f;
     MatrixXi os_, blur_neighbors1T_, blur_neighbors2T_;
     MatrixXf ws_;
-    float *canonical_, *scale_factor_,
+    float *canonical_, *scale_factor_;
 
-      public:
-          Permutohedral(int N, int d)
+public:
+    Permutohedral(int N, int d)
     {
         N_ = N;
         d_ = d;
 
         // Slicing
-        alpha_ = 1.f / (1 + powf(2, -d));
+        alpha_ = 1.f / (1 + powf(2, -d_));
 
-        os_.resize(N, d + 1);
-        ws_.resize(N, d + 1);
-        blur_neighbors1T_.resize(d + 1, M);
-        blur_neighbors2T_.resize(d + 1, M);
+        os_.resize(N_, d_ + 1);
+        ws_.resize(N_, d_ + 1);
 
         // Allocate predefined factors
         canonical_ = new short[(d_ + 1) * (d_ + 1)];
@@ -165,12 +163,10 @@ protected:
         HashTable hash_table(d_, N_ * (d_ + 1));
 
         // Allocate local memories
-//        float *scale_factor = new float[d_];
         float *elevated = new float[d_ + 1];
-        short *rem0 = new short[d_ + 1];
+        int *rem0 = new int[d_ + 1];
         float *barycentric = new float[d_ + 2];
         short *rank = new short[d_ + 1];
-//        short *canonical = new short[(d_ + 1) * (d_ + 1)];
         short *key = new short[d_ + 1];
 
         // Compute the simplex each feature lies in
@@ -214,10 +210,6 @@ protected:
 
             // Find the simplex we are in and store it in rank (where rank describes what position coordinate i has in the sorted order of the feature values)
             fill(rank, rank + d_ + 1, 0);
-//            for (int i = 0; i < d_ + 1; i++)
-//            {
-//                rank[i] = 0;
-//            }
             for (int i = 0; i < d_; i++)
             {
                 double di = elevated[i] - rem0[i];
@@ -269,21 +261,16 @@ protected:
                     key[i] = rem0[i] + canonical_[remainder * (d_ + 1) + rank[i]];
                 }
 
-//                os[n * (d + 1) + remainder] = hash_table.find(key, true) + 1;
                 os_(n, remainder) = hash_table.find(key, true) + 1;
-
-//                ws[n * (d + 1) + remainder] = barycentric[remainder];
                 ws_(n, remainder) = barycentric[remainder];
             }
         }
 
         // Delete
-//        delete[] scale_factor;
         delete[] elevated;
         delete[] rem0;
         delete[] barycentric;
         delete[] rank;
-//        delete[] canonical;
         delete[] key;
 
         // Find the neighbors of each lattice point
@@ -310,9 +297,6 @@ protected:
                 n1[j] = key[j] + d;
                 n2[j] = key[j] - d;
 
-//                blur_neighborsT[j * (*M) * 2 + i * 2 + 0] = hash_table.find(n1) + 1;
-//                blur_neighborsT[j * (*M) * 2 + i * 2 + 1] = hash_table.find(n2) + 1;
-
                 blur_neighbors1T_(j, i) = hash_table.find(n1) + 1;
                 blur_neighbors2T_(j, i) = hash_table.find(n2) + 1;
             }
@@ -324,8 +308,6 @@ protected:
 
     void compute(const MatrixXf &inp_flat, const bool reversal, MatrixXf &out_flat)
     {
-//    float *values = new float[(M + 2) * value_size];
-//    fill(values, values + (M + 2) * value_size, 0.f);
         int value_size = inp_flat.cols();
 
         MatrixXf values(M_ + 2, value_size);
@@ -336,14 +318,8 @@ protected:
         {
             for (int j = 0; j < d_ + 1; j++)
             {
-//                int o = os[i * (d + 1) + j];
                 int o = os_(i, j);
-//                float w = ws[i * (d + 1) + j];
                 float w = ws_(i, j);
-//            for (int k = 0; k < value_size; k++)
-//            {
-//                values[o * value_size + k] += w * inp[i * value_size + k];
-//            }
                 values(o, all) += w * inp_flat(i, all);
             }
         }
@@ -351,21 +327,6 @@ protected:
         // Blurring
         for (int j = reversal ? d : 0; j <= d && j >= 0; reversal ? j-- : j++)
         {
-//            for (int i = 0; i < M; i++)
-//            {
-//                int n1 = blur_neighborsT[j * M * 2 + i * 2 + 0];
-//                int n2 = blur_neighborsT[j * M * 2 + i * 2 + 1];
-//                for (int k = 0; k < value_size; k++)
-//                {
-//                    float n1_val = values[n1 * value_size + k];
-//                    float n2_val = values[n2 * value_size + k];
-//
-//                    values[(i + 1) * value_size + k] += 0.5 * (n1_val + n2_val);
-//                }
-//
-//                values(i + 1, all) += 0.5 * (n1_val + n2_val);
-//            }
-
             VectorXi n1s = blur_neighbors1T_(j, all);
             VectorXi n2s = blur_neighbors2T_(j, all);
 
@@ -373,264 +334,25 @@ protected:
             MatrixXf n2_vals = values(n2s, all);
 
             values(seq(1, M_), all) += 0.5 * (n1_vals + n2_vals);
-
         }
 
-//        fill(out, out + N * value_size, 0.f);
         out_flat.setZero();
 
         for (int i = 0; i < N_; i++)
         {
             for (int j = 0; j < d_ + 1; j++)
             {
-//                int o = os[i * (d + 1) + j];
-//                float w = ws[i * (d + 1) + j];
                 int o = os_(i, j);
                 float w = ws_(i, j);
                 out_flat(i, all) += w * values(o, all) * alpha_;
-//                for (int k = 0; k < value_size; k++)
-//                {
-//                    out[i * value_size + k] += w * values[o * value_size + k] * alpha;
-//                }
             }
         }
+    }
 
+    void testCompute(const float *inp_1d, const int value_size, const bool reversal, float *out_1d)
+    {
+        Map< Matrix<float, N_, value_size> > inp_flat(inp_1d);
+        Map< Matrix<float, N_, value_size> > out_flat(out_1d);
+        compute(inp_flat, reversal, out_flat);
     }
 };
-
-//void cppInit(const float *features, const int N, const int d, int *os, float *ws, int *blur_neighborsT, int *M)
-//{
-//    // Compute the lattice coordinates for each feature [there is going to be a lot of magic here]
-//    HashTable hash_table(d, N * (d + 1));
-//
-//    // Allocate local memories
-//    float *scale_factor = new float[d];
-//    float *elevated = new float[d + 1];
-//    float *rem0 = new float[d + 1];
-//    float *barycentric = new float[d + 2];
-//    short *rank = new short[d + 1];
-//    short *canonical = new short[(d + 1) * (d + 1)];
-//    short *key = new short[d + 1];
-//
-//    // Compute the canonical simplex
-//    for (int i = 0; i < d + 1; i++)
-//    {
-//        for (int j = 0; j < d - i + 1; j++)
-//        {
-//            canonical[i * (d + 1) + j] = i;
-//        }
-//        for (int j = d - i + 1; j < d + 1; j++)
-//        {
-//            canonical[i * (d + 1) + j] = i - (d + 1);
-//        }
-//    }
-//
-//    // Expected standard deviation of our filter (p.6 in [Adams et al., 2010])
-//    float inv_std_dev = sqrt(2. / 3.) * (d + 1);
-//    // Compute the diagonal part of E (p.5 in [Adams et al., 2010])
-//    for (int i = 0; i < d; i++)
-//    {
-//        scale_factor[i] = 1. / sqrt(double((i + 2) * (i + 1))) * inv_std_dev;
-//    }
-//
-//    // Compute the simplex each feature lies in
-//    for (int n = 0; n < N; n++)
-//    {
-//        // Elevate the feature (y = Ep, see p.5 in [Adams et al., 2010])
-//        const float *f = &features[n * d];
-//
-//        // sm contains the sum of 1...n of our feature vector
-//        float sm = 0;
-//        for (int j = d; j > 0; j--)
-//        {
-//            float cf = f[j - 1] * scale_factor[j - 1];
-//            elevated[j] = sm - j * cf;
-//            sm += cf;
-//        }
-//        elevated[0] = sm;
-//
-//        // Find the closest 0-colored simplex through rounding
-//        float down_factor = 1.f / (d + 1);
-//        float up_factor = (d + 1);
-//        int sum = 0;
-//        for (int i = 0; i < d + 1; i++)
-//        {
-//            int rd2;
-//            float v = down_factor * elevated[i];
-//            float up = ceilf(v) * up_factor;
-//            float down = floorf(v) * up_factor;
-//            if (up - elevated[i] < elevated[i] - down)
-//            {
-//                rd2 = (short)up;
-//            }
-//            else
-//            {
-//                rd2 = (short)down;
-//            }
-//
-//            rem0[i] = rd2;
-//            sum += rd2 * down_factor;
-//        }
-//
-//        // Find the simplex we are in and store it in rank (where rank describes what position coordinate i has in the sorted order of the feature values)
-//        for (int i = 0; i < d + 1; i++)
-//        {
-//            rank[i] = 0;
-//        }
-//        for (int i = 0; i < d; i++)
-//        {
-//            double di = elevated[i] - rem0[i];
-//            for (int j = i + 1; j < d + 1; j++)
-//            {
-//                if (di < elevated[j] - rem0[j])
-//                {
-//                    rank[i]++;
-//                }
-//                else
-//                {
-//                    rank[j]++;
-//                }
-//            }
-//        }
-//
-//        // If the point doesn't lie on the plane (sum != 0) bring it back
-//        for (int i = 0; i < d + 1; i++)
-//        {
-//            rank[i] += sum;
-//            if (rank[i] < 0)
-//            {
-//                rank[i] += d + 1;
-//                rem0[i] += d + 1;
-//            }
-//            else if (rank[i] > d)
-//            {
-//                rank[i] -= d + 1;
-//                rem0[i] -= d + 1;
-//            }
-//        }
-//
-//        // Compute the barycentric coordinates (p.10 in [Adams et al., 2010])
-//        fill(barycentric, barycentric + d + 2, 0);
-//        for (int i = 0; i < d + 1; i++)
-//        {
-//            float v = (elevated[i] - rem0[i]) * down_factor;
-//            barycentric[d - rank[i]] += v;
-//            barycentric[d - rank[i] + 1] -= v;
-//        }
-//        // Wrap around
-//        barycentric[0] += 1. + barycentric[d + 1];
-//
-//        // Compute all vertices and their offset
-//        for (int remainder = 0; remainder < d + 1; remainder++)
-//        {
-//            for (int i = 0; i < d; i++)
-//            {
-//                key[i] = rem0[i] + canonical[remainder * (d + 1) + rank[i]];
-//            }
-//
-//            os[n * (d + 1) + remainder] = hash_table.find(key, true) + 1;
-//
-//            ws[n * (d + 1) + remainder] = barycentric[remainder];
-//        }
-//    }
-//
-//    // Delete
-//    delete[] scale_factor;
-//    delete[] elevated;
-//    delete[] rem0;
-//    delete[] barycentric;
-//    delete[] rank;
-//    delete[] canonical;
-//    delete[] key;
-//
-//    // Find the neighbors of each lattice point
-//
-//    // Get the number of vertices in the lattice
-//    *M = hash_table.size();
-//
-//    short *n1 = new short[d + 1];
-//    short *n2 = new short[d + 1];
-//
-//    // For each of d + 1 axes,
-//    for (int j = 0; j < d + 1; j++)
-//    {
-//        for (int i = 0; i < *M; i++)
-//        {
-//            const short *key = hash_table.getKey(i);
-//            for (int k = 0; k < d; k++)
-//            {
-//                n1[k] = key[k] - 1;
-//                n2[k] = key[k] + 1;
-//            }
-//            n1[j] = key[j] + d;
-//            n2[j] = key[j] - d;
-//
-//            blur_neighborsT[j * (*M) * 2 + i * 2 + 0] = hash_table.find(n1) + 1;
-//            blur_neighborsT[j * (*M) * 2 + i * 2 + 1] = hash_table.find(n2) + 1;
-//        }
-//    }
-//
-//    delete[] n1;
-//    delete[] n2;
-//}
-
-//void cppCompute(const MatrixXf &inp, const int N, const int value_size, const int M, const int d, const int *os, const float *ws, const int *blur_neighborsT, const bool reverse, float *out)
-//{
-////    float *values = new float[(M + 2) * value_size];
-////    fill(values, values + (M + 2) * value_size, 0.f);
-//    MatrixXf values(M + 2, value_size);
-//    values.setZero();
-//
-//    // Splatting
-//    for (int i = 0; i < N; i++)
-//    {
-//        for (int j = 0; j < d + 1; j++)
-//        {
-//            int o = os[i * (d + 1) + j];
-//            float w = ws[i * (d + 1) + j];
-////            for (int k = 0; k < value_size; k++)
-////            {
-////                values[o * value_size + k] += w * inp[i * value_size + k];
-////            }
-//            values(o, all) += w * inp(i, all);
-//        }
-//    }
-//
-//    // Blurring
-//    for (int j = reverse ? d : 0; j <= d && j >= 0; reverse ? j-- : j++)
-//    {
-//        for (int i = 0; i < M; i++)
-//        {
-//            int n1 = blur_neighborsT[j * M * 2 + i * 2 + 0];
-//            int n2 = blur_neighborsT[j * M * 2 + i * 2 + 1];
-//            for (int k = 0; k < value_size; k++)
-//            {
-//                float n1_val = values[n1 * value_size + k];
-//                float n2_val = values[n2 * value_size + k];
-//
-//                values[(i + 1) * value_size + k] += 0.5 * (n1_val + n2_val);
-//            }
-//
-//            values(i + 1, all) += 0.5 * (n1_val + n2_val);
-//        }
-//    }
-//
-//    // Slicing
-//    float alpha = 1.f / (1 + powf(2, -d));
-//
-//    fill(out, out + N * value_size, 0.f);
-//    for (int i = 0; i < N; i++)
-//    {
-//        for (int j = 0; j < d + 1; j++)
-//        {
-//            int o = os[i * (d + 1) + j];
-//            float w = ws[i * (d + 1) + j];
-//            for (int k = 0; k < value_size; k++)
-//            {
-//                out[i * value_size + k] += w * values[o * value_size + k] * alpha;
-//            }
-//        }
-//    }
-//
-//    delete[] values;
-//}
