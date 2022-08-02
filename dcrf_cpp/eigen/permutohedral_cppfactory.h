@@ -1,4 +1,3 @@
-
 #include <stdbool.h>
 #include <vector>
 #include <iostream>
@@ -302,7 +301,7 @@ public:
         delete[] n2;
     }
 
-    void compute(const MatrixXf &inp_flat, const bool reversal, MatrixXf &out_flat)
+    void compute(const Map<const MatrixXf> &inp_flat, const bool reversal, Map<MatrixXf> &out_flat)
     {
         int value_size = inp_flat.cols();
 
@@ -347,15 +346,10 @@ public:
 
     void testCompute(const float *inp_1d, const int N, const int value_size, const bool reversal, float *out_1d)
     {
-        const MatrixXf inp_flat = Map< const MatrixXf >(inp_1d, N, value_size);
-        MatrixXf out_flat(N, value_size);
+        const Map< const MatrixXf > inp_flat(inp_1d, N, value_size);
+        Map<MatrixXf> out_flat(out_1d, N, value_size);
         compute(inp_flat, reversal, out_flat);
-
-        for (int i = 0; i < out_flat.size(); i++)
-        {
-            out_1d[i] = out_flat.data()[i];
-        }
     }
 
-    ~Permutohedral(){}
+    ~Permutohedral() {}
 };
