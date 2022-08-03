@@ -1,3 +1,30 @@
+/*
+    Copyright (c) 2013, Philipp Krähenbühl, Libin Jiao
+    All rights reserved.
+
+    Redistribution and use in source and binary forms, with or without
+    modification, are permitted provided that the following conditions are met:
+        * Redistributions of source code must retain the above copyright
+        notice, this list of conditions and the following disclaimer.
+        * Redistributions in binary form must reproduce the above copyright
+        notice, this list of conditions and the following disclaimer in the
+        documentation and/or other materials provided with the distribution.
+        * Neither the name of the Stanford University nor the
+        names of its contributors may be used to endorse or promote products
+        derived from this software without specific prior written permission.
+
+    THIS SOFTWARE IS PROVIDED BY Philipp Krähenbühl and Libin Jiao ''AS IS'' AND ANY
+    EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+    WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+    DISCLAIMED. IN NO EVENT SHALL Philipp Krähenbühl BE LIABLE FOR ANY
+    DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+    (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+    LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+    ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+    (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+    SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
 #include <stdbool.h>
 #include <vector>
 #include <iostream>
@@ -108,8 +135,15 @@ class Permutohedral
 protected:
     int N_ = 0, d_ = 0, M_ = 0;
     float alpha_ = 0.f;
-    MatrixXi os_, blur_neighbors1T_, blur_neighbors2T_;
-    MatrixXf ws_;
+
+    /*
+    Eigen requires channel-first matrices, denoted by 'T'. This implementation requires flatten factors, denoted by 'flat'.
+    */
+    MatrixXi os_flat_;
+    MatrixXf ws_flat_;
+
+    // Channel-last property of blur_neighbors matrices facilitates memory access.
+    MatrixXi blur_neighbors1_flatT_, blur_neighbors2_flatT_;
 
 public:
     Permutohedral(int N, int d)
@@ -120,14 +154,12 @@ public:
         // Slicing
         alpha_ = 1.f / (1 + powf(2, -d_));
 
-        os_.resize(N_, d_ + 1);
-        ws_.resize(N_, d_ + 1);
-
-        // Allocate predefined factors
+        os_flat_.resize(N_, d_ + 1);
+        ws_flat_.resize(N_, d_ + 1);
 
     }
 
-    void init(const float *features)
+    void init(const float *features_1d)
     {
         // Compute the lattice coordinates for each feature [there is going to be a lot of magic here]
         HashTable hash_table(d_, N_ * (d_ + 1));
@@ -166,7 +198,7 @@ public:
         for (int n = 0; n < N_; n++)
         {
             // Elevate the feature (y = Ep, see p.5 in [Adams et al., 2010])
-            const float *f = &features[n * d_];
+            const float *f = &features_1d[n * d_];
 
             // sm contains the sum of 1...n of our feature vector
             float sm = 0;
@@ -254,8 +286,8 @@ public:
                     key[i] = rem0[i] + canonical[remainder * (d_ + 1) + rank[i]];
                 }
 
-                os_(n, remainder) = hash_table.find(key, true) + 1;
-                ws_(n, remainder) = barycentric[remainder];
+                os_flat_(n, remainder) = hash_table.find(key, true) + 1;
+                ws_flat_(n, remainder) = barycentric[remainder];
             }
         }
 
@@ -272,8 +304,8 @@ public:
 
         // Get the number of vertices in the lattice
         M_ = hash_table.size();
-        blur_neighbors1T_.resize(d_ + 1, M_);
-        blur_neighbors2T_.resize(d_ + 1, M_);
+        blur_neighbors1_flatT_.resize(d_ + 1, M_);
+        blur_neighbors2_flatT_.resize(d_ + 1, M_);
 
         short *n1 = new short[d_ + 1];
         short *n2 = new short[d_ + 1];
@@ -284,6 +316,7 @@ public:
             for (int i = 0; i < M_; i++)
             {
                 const short *key = hash_table.getKey(i);
+
                 for (int k = 0; k < d_; k++)
                 {
                     n1[k] = key[k] - 1;
@@ -292,8 +325,8 @@ public:
                 n1[j] = key[j] + d_;
                 n2[j] = key[j] - d_;
 
-                blur_neighbors1T_(j, i) = hash_table.find(n1) + 1;
-                blur_neighbors2T_(j, i) = hash_table.find(n2) + 1;
+                blur_neighbors1_flatT_(j, i) = hash_table.find(n1) + 1;
+                blur_neighbors2_flatT_(j, i) = hash_table.find(n2) + 1;
             }
         }
 
@@ -301,54 +334,57 @@ public:
         delete[] n2;
     }
 
-    void compute(const Map<const MatrixXf> &inp_flat, const bool reversal, Map<MatrixXf> &out_flat)
+    void compute(const MatrixXf &inp_flatT, const bool reversal, MatrixXf &out_flatT)
     {
-        int value_size = inp_flat.cols();
+        int value_size = inp_flatT.rows();
 
-        MatrixXf values(M_ + 2, value_size);
-        values.setZero();
+        MatrixXf values_flatT(value_size, M_ + 2);
+        values_flatT.setZero();
 
         // Splatting
         for (int i = 0; i < N_; i++)
         {
             for (int j = 0; j < d_ + 1; j++)
             {
-                int o = os_(i, j);
-                float w = ws_(i, j);
-                values(o, all) += w * inp_flat(i, all);
+                int o = os_flat_(i, j);
+                float w = ws_flat_(i, j);
+                values_flatT(all, o) += w * inp_flatT(all, i);
             }
         }
 
         // Blurring
         for (int j = reversal ? d_ : 0; j <= d_ && j >= 0; reversal ? j-- : j++)
         {
-            VectorXi n1s = blur_neighbors1T_(j, all);
-            VectorXi n2s = blur_neighbors2T_(j, all);
+            VectorXi n1s = blur_neighbors1_flatT_(j, all);
+            VectorXi n2s = blur_neighbors2_flatT_(j, all);
 
-            MatrixXf n1_vals = values(n1s, all);
-            MatrixXf n2_vals = values(n2s, all);
+            MatrixXf n1_vals = values_flatT(all, n1s);
+            MatrixXf n2_vals = values_flatT(all, n2s);
 
-            values(seq(1, M_), all) += 0.5 * (n1_vals + n2_vals);
+            values_flatT(all, seq(1, M_)) += 0.5 * (n1_vals + n2_vals);
         }
 
-        out_flat.setZero();
+        out_flatT.setZero();
 
         for (int i = 0; i < N_; i++)
         {
             for (int j = 0; j < d_ + 1; j++)
             {
-                int o = os_(i, j);
-                float w = ws_(i, j);
-                out_flat(i, all) += w * values(o, all) * alpha_;
+                int o = os_flat_(i, j);
+                float w = ws_flat_(i, j);
+                out_flatT(all, i) += w * values_flatT(all, o) * alpha_;
             }
         }
     }
 
     void testCompute(const float *inp_1d, const int N, const int value_size, const bool reversal, float *out_1d)
     {
-        const Map< const MatrixXf > inp_flat(inp_1d, N, value_size);
-        Map<MatrixXf> out_flat(out_1d, N, value_size);
-        compute(inp_flat, reversal, out_flat);
+        const MatrixXf _inp_flatT = Map<const MatrixXf>(inp_1d, value_size, N);
+        MatrixXf _out_flatT(value_size, N);
+        compute(_inp_flatT, reversal, _out_flatT);
+
+        Map<MatrixXf> out_flatT(out_1d, value_size, N);
+        out_flatT = _out_flatT;
     }
 
     ~Permutohedral() {}
