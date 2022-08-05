@@ -130,3 +130,8 @@ dmypy.json
 
 # Pretrained parameters
 rfn_unet/pretrained/
+
+# Cython
+pydensecrf/cpp/build/
+pydensecrf/cpp/Eigen/
+*.pyd
