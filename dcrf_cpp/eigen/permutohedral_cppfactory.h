@@ -139,11 +139,11 @@ protected:
     /*
     Eigen requires channel-first matrices, denoted by 'T'. This implementation requires flatten factors, denoted by 'flat'.
     */
-    MatrixXi os_flat_;
-    MatrixXf ws_flat_;
+    MatrixXi os_flatT_; // [d + 1, N]
+    MatrixXf ws_flatT_; // [d + 1, N]
 
     // Channel-last property of blur_neighbors matrices facilitates memory access.
-    MatrixXi blur_neighbors1_flatT_, blur_neighbors2_flatT_;
+    MatrixXi blur_neighbors1_flat_, blur_neighbors2_flat_; // [M, d + 1]
 
 public:
     Permutohedral(int N, int d)
@@ -154,8 +154,8 @@ public:
         // Slicing
         alpha_ = 1.f / (1 + powf(2, -d_));
 
-        os_flat_.resize(N_, d_ + 1);
-        ws_flat_.resize(N_, d_ + 1);
+        os_flatT_.resize(d_ + 1, N_);
+        ws_flatT_.resize(d_ + 1, N_);
 
     }
 
@@ -286,8 +286,8 @@ public:
                     key[i] = rem0[i] + canonical[remainder * (d_ + 1) + rank[i]];
                 }
 
-                os_flat_(n, remainder) = hash_table.find(key, true) + 1;
-                ws_flat_(n, remainder) = barycentric[remainder];
+                os_flatT_(remainder, n) = hash_table.find(key, true) + 1;
+                ws_flatT_(remainder, n) = barycentric[remainder];
             }
         }
 
@@ -304,8 +304,8 @@ public:
 
         // Get the number of vertices in the lattice
         M_ = hash_table.size();
-        blur_neighbors1_flatT_.resize(d_ + 1, M_);
-        blur_neighbors2_flatT_.resize(d_ + 1, M_);
+        blur_neighbors1_flat_.resize(M_, d_ + 1);
+        blur_neighbors2_flat_.resize(M_, d_ + 1);
 
         short *n1 = new short[d_ + 1];
         short *n2 = new short[d_ + 1];
@@ -325,8 +325,8 @@ public:
                 n1[j] = key[j] + d_;
                 n2[j] = key[j] - d_;
 
-                blur_neighbors1_flatT_(j, i) = hash_table.find(n1) + 1;
-                blur_neighbors2_flatT_(j, i) = hash_table.find(n2) + 1;
+                blur_neighbors1_flat_(i, j) = hash_table.find(n1) + 1;
+                blur_neighbors2_flat_(i, j) = hash_table.find(n2) + 1;
             }
         }
 
@@ -346,8 +346,8 @@ public:
         {
             for (int j = 0; j < d_ + 1; j++)
             {
-                int o = os_flat_(i, j);
-                float w = ws_flat_(i, j);
+                int o = os_flatT_(j, i);
+                float w = ws_flatT_(j, i);
                 values_flatT(all, o) += w * inp_flatT(all, i);
             }
         }
@@ -355,8 +355,8 @@ public:
         // Blurring
         for (int j = reversal ? d_ : 0; j <= d_ && j >= 0; reversal ? j-- : j++)
         {
-            VectorXi n1s = blur_neighbors1_flatT_(j, all);
-            VectorXi n2s = blur_neighbors2_flatT_(j, all);
+            VectorXi n1s = blur_neighbors1_flat_(all, j);
+            VectorXi n2s = blur_neighbors2_flat_(all, j);
 
             MatrixXf n1_vals = values_flatT(all, n1s);
             MatrixXf n2_vals = values_flatT(all, n2s);
@@ -370,8 +370,8 @@ public:
         {
             for (int j = 0; j < d_ + 1; j++)
             {
-                int o = os_flat_(i, j);
-                float w = ws_flat_(i, j);
+                int o = os_flatT_(j, i);
+                float w = ws_flatT_(j, i);
                 out_flatT(all, i) += w * values_flatT(all, o) * alpha_;
             }
         }

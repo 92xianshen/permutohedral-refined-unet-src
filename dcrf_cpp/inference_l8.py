@@ -5,6 +5,7 @@ from permutohedral_np_cpp import Permutohedral as PermutohedralNP
 from PIL import Image
 import matplotlib.pyplot as plt
 import cv2
+import time
 
 from scipy.special import softmax
 # import tensorflow as tf
@@ -72,16 +73,15 @@ def inference(unary, image, spatial_filter, bilateral_filter, height, width, num
     bilateral_out = np.zeros_like(Q)
 
     for i in range(num_iterations):
+        print("Iteration {}...".format(i + 1))
         tmp1 = -unary # [n_feats, n_classes]
 
         # Symmetric normalization and spatial message passing
         spatial_filter.compute(Q * spatial_norm_vals, False, spatial_out) # [n_feats, n_classes]
-        print('Spatial computation done.')
         spatial_out *= spatial_norm_vals # [n_feats, n_classes]
 
         # Symmetric normalization and bilateral message passing
         bilateral_filter.compute(Q * bilateral_norm_vals, False, bilateral_out) # [n_feats, n_classes]
-        print('Bilateral computation done.')
         bilateral_out *= bilateral_norm_vals # [n_feats, n_classes]
 
         # Message passing
@@ -144,12 +144,14 @@ if __name__ == "__main__":
     bilateral_filter = PermutohedralNP(n_feats, d_bifeats)
     spatial_filter = PermutohedralNP(n_feats, d_spfeats)
 
+    start = time.time()
     rfn = inference(unary, image, spatial_filter, bilateral_filter, height, width, n_classes, theta_alpha=80., theta_beta=.0625, theta_gamma=3., spatial_compat=3., bilateral_compat=10., num_iterations=10)
     
     MAP = np.argmax(rfn, axis=-1)
-    print(MAP.shape)
+    print("Time consumption: {}".format(time.time() - start))
     plt.imshow(MAP, cmap='gray')
     plt.show()
+    plt.imsave('../../test_result/LC08_L1TP_113026_20160412_20170326_01_T1_fullrfn.png', MAP)
 
     # pred = inference(tf.constant(unary.astype(np.float32)), tf.constant((img / 255.).astype(np.float32)), spatial_filter, bilateral_filter, height, width, n_labels, theta_alpha=80., theta_beta=.0625, theta_gamma=3., spatial_compat=3., bilateral_compat=10., num_iterations=10)
     # pred = pred.numpy()
