@@ -128,10 +128,23 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+# Previous code
+previous_code/
+dcrf_cpp/
+
+# Helper function
+quantitative_assessment/
+quantitative_assessment_l8/
+
 # Pretrained parameters
-rfn_unet/pretrained/
+rfn_unet_l8/pretrained/
+rfn_unet_l8/unary_model/
+rfn_unet_rice/backbone/
+rfn_unet_rice/checkpoint/
+rfn_unet_rice/unary_model/
 
 # Cython
 pydensecrf/cpp/build/
 pydensecrf/cpp/Eigen/
 *.pyd
+*.cpp
