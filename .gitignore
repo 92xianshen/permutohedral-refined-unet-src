@@ -137,11 +137,15 @@ quantitative_assessment/
 quantitative_assessment_l8/
 
 # Pretrained parameters
-rfn_unet_l8/pretrained/
-rfn_unet_l8/unary_model/
-rfn_unet_rice/backbone/
-rfn_unet_rice/checkpoint/
-rfn_unet_rice/unary_model/
+# rfn_unet_l8/pretrained/
+# rfn_unet_l8/unary_model/
+# rfn_unet_rice/backbone/
+# rfn_unet_rice/checkpoint/
+# rfn_unet_rice/unary_model/
+checkpoint
+*.data*
+*.index
+*.pb
 
 # Cython
 pydensecrf/cpp/build/

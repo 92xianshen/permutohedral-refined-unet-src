@@ -10,13 +10,14 @@ def reconstruct(pred_patches, crop_height, crop_width, n_channels):
         assert num_height * num_width == predictions.shape[0], 'Dim is wrong. {} X {} != {}'.format(
             num_height, num_width, predictions.shape[0])
 
-        prediction = np.ndarray(shape=(
-            num_height * crop_height, num_width * crop_width, n_channels), dtype=predictions.dtype)
+        if n_channels == None:
+            prediction = np.ndarray((num_height * crop_height, num_width * crop_width), dtype=predictions.dtype)
+        else:
+            prediction = np.ndarray((num_height * crop_height, num_width * crop_width, n_channels), dtype=predictions.dtype)
 
         for i in range(num_height):
             for j in range(num_width):
-                prediction[(crop_height * i):(crop_height * (i + 1)), (crop_width * j)
-                            :(crop_width * (j + 1))] = predictions[i * num_width + j]
+                prediction[(crop_height * i):(crop_height * (i + 1)), (crop_width * j):(crop_width * (j + 1))] = predictions[i * num_width + j]
 
         return prediction
 
